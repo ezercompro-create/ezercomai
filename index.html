@@ -86,6 +86,10 @@ label.ctl{font-size:11px;color:var(--txt2);display:flex;flex-direction:column;ga
 .chip.on.c-dip{background:var(--long-dim);border-color:var(--long);color:var(--long)}
 .chip.on.c-tepe{background:var(--short-dim);border-color:var(--short);color:var(--short)}
 .chip.on.c-all{border-color:var(--blue);color:var(--blue)}
+.chip.on.c-watch{background:var(--warn-dim);border-color:var(--warn);color:var(--warn)}
+.star{color:var(--border2);cursor:pointer;font-size:14px;margin-right:4px;transition:color .15s}
+.star:hover{color:var(--txt2)}
+.star.on{color:var(--warn)}
 #search{min-width:180px}
 .count{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--txt3)}
 
@@ -224,6 +228,10 @@ footer{margin-top:18px;font-family:var(--mono);font-size:11px;color:var(--txt3);
       <input type="checkbox" id="closedOnly" style="accent-color:var(--long);width:15px;height:15px">
       Sadece kapanmış mumlar
     </label>
+    <label class="ctl" style="flex-direction:row;align-items:center;gap:6px;padding-top:14px">
+      <input type="checkbox" id="btChk" checked style="accent-color:var(--blue);width:15px;height:15px">
+      📜 Backtest
+    </label>
     <button id="scanBtn">▶ Taramayı Başlat</button>
     <button id="stopBtn">■ Durdur</button>
     <button id="guideBtn" style="background:var(--panel2);border:1px solid var(--blue);color:var(--blue)">📖 Rehber</button>
@@ -249,6 +257,16 @@ footer{margin-top:18px;font-family:var(--mono);font-size:11px;color:var(--txt3);
   <div class="bcard"><div class="k">Referans RSI (1D)</div><div class="v" id="bBtc">–</div></div>
 </div>
 
+<div class="breadth" id="btPanel" style="display:none">
+  <div class="bcard" style="grid-column:1/-1;padding:8px 14px"><div class="k" style="color:var(--blue)">📜 BACKTEST — bu motorun taranan evrende son ~70 gündeki geçmiş performansı (giriş: kırılım · SL: 3 mum ± 0.3 ATR · TP: 1.5R)</div></div>
+  <div class="bcard"><div class="k">Üretilen Sinyal</div><div class="v" id="btN">–</div></div>
+  <div class="bcard"><div class="k">Tetiklenen</div><div class="v" id="btTrig">–</div></div>
+  <div class="bcard"><div class="k">TP1 İsabet</div><div class="v" id="btWin">–</div></div>
+  <div class="bcard"><div class="k">Ortalama R</div><div class="v" id="btR">–</div></div>
+  <div class="bcard"><div class="k">Long İsabet</div><div class="v long" id="btL">–</div></div>
+  <div class="bcard"><div class="k">Short İsabet</div><div class="v short" id="btS">–</div></div>
+</div>
+
 <div class="featured" id="featured" style="display:none">
   <div class="fcol dipcol">
     <h2>🟢 EN GÜÇLÜ DİP ADAYLARI — LONG radar</h2>
@@ -264,6 +282,7 @@ footer{margin-top:18px;font-family:var(--mono);font-size:11px;color:var(--txt3);
   <button class="chip c-all on" data-cat="all">Tümü</button>
   <button class="chip c-dip" data-cat="dip">Dip Adayları</button>
   <button class="chip c-tepe" data-cat="tepe">Tepe Adayları</button>
+  <button class="chip c-watch" data-cat="watch">⭐ İzleme</button>
   <input type="text" id="search" placeholder="Sembol ara… (örn. SOL)">
   <span class="count" id="rowCount"></span>
 </div>
@@ -316,7 +335,33 @@ const $ = id => document.getElementById(id);
 const fmt = (n,d=2)=> n==null||isNaN(n) ? "–" : Number(n).toLocaleString("en-US",{maximumFractionDigits:d});
 const fmtP = p => p>=1000?fmt(p,1):p>=1?fmt(p,4):fmt(p,6);
 
-let STATE = { rows:[], sortK:"score", sortDir:-1, cat:"all", search:"", running:false, abort:false, source:"binance" };
+let STATE = { rows:[], sortK:"score", sortDir:-1, cat:"all", search:"", running:false, abort:false, source:"binance", watch:new Set() };
+
+/* ---------------- güvenli depolama (yalnız barındırılan sitede kalıcıdır) ---------------- */
+const store={
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+};
+const SETTING_IDS=["marketSel","srcSel","scopeSel","minVol","closedOnly","autoSel","btChk"];
+function saveSettings(){
+  const o={};
+  for(const id of SETTING_IDS){ const el=$(id); if(!el) continue; o[id]=el.type==="checkbox"?el.checked:el.value; }
+  store.set("ez_settings", JSON.stringify(o));
+}
+function restoreSettings(){
+  try{
+    const o=JSON.parse(store.get("ez_settings")||"{}");
+    for(const id of SETTING_IDS){ const el=$(id); if(!el||!(id in o)) continue;
+      if(el.type==="checkbox") el.checked=!!o[id]; else el.value=o[id]; }
+    STATE.watch=new Set(JSON.parse(store.get("ez_watch")||"[]"));
+  }catch(e){}
+}
+window.toggleWatch=function(sym,el){
+  if(STATE.watch.has(sym)) STATE.watch.delete(sym); else STATE.watch.add(sym);
+  store.set("ez_watch", JSON.stringify([...STATE.watch]));
+  if(el) el.classList.toggle("on", STATE.watch.has(sym));
+  if(STATE.cat==="watch") renderTable();
+};
 
 /* ---------------- data source adapters ---------------- */
 const BIN = "https://fapi.binance.com";
@@ -662,6 +707,81 @@ function analyze(sym, meta, d, w, closedOnly){
     wPats, dPats, parts, spark:dc.slice(-60) };
 }
 
+/* ---------------- 📜 Backtest motoru ----------------
+   analyze() ile AYNI ağırlıklar (funding hariç — geçmiş funding verisi yok).
+   Sinyal: skor ±40'ı kesince. Giriş: sinyal mumu kırılımı (5 mumda tetiklenmezse iptal).
+   SL: son 3 mumun ucu ± 0.3×ATR14. TP: 1.5R. Aynı barda ikisi de görülürse SL sayılır (muhafazakâr). */
+function btScore(dS,wS){
+  if(dS.length<25||wS.length<5) return 0;
+  const last=dS[dS.length-1];
+  const rsiD=rsi(dS.map(k=>k.c)), rsiW=rsi(wS.map(k=>k.c));
+  const dP=detectPatterns(dS)[0]||null, wP=detectPatterns(wS)[0]||null;
+  const look=dS.slice(-90);
+  const lo=Math.min(...look.map(k=>k.l)), hi=Math.max(...look.map(k=>k.h));
+  const rangePos=hi>lo?(last.c-lo)/(hi-lo):0.5;
+  const vAvg=sma(dS.slice(0,-1).map(k=>k.v),20);
+  const volX=vAvg?last.v/vAvg:1;
+  const rA=range(last)||1e-9, lowRej=dnWick(last)/rA, highRej=upWick(last)/rA;
+  let s=0;
+  s+= wP?Math.round(25*wP.w*wP.dir):0;
+  s+= dP?Math.round(15*dP.w*dP.dir):0;
+  if(rsiD!=null){ if(rsiD<=30)s+=Math.min(15,Math.round((30-rsiD)*0.75)); else if(rsiD>=70)s-=Math.min(15,Math.round((rsiD-70)*0.75)); }
+  if(rsiW!=null){ if(rsiW<=35)s+=Math.min(10,Math.round((35-rsiW)*0.5)); else if(rsiW>=65)s-=Math.min(10,Math.round((rsiW-65)*0.5)); }
+  if(rangePos<=0.2)s+=Math.round(12*(0.2-rangePos)/0.2); else if(rangePos>=0.8)s-=Math.round(12*(rangePos-0.8)/0.2);
+  const pd=(wP?wP.dir*wP.w:0)*1.5+(dP?dP.dir*dP.w:0);
+  if(volX>=1.5&&pd!==0)s+=Math.round(Math.min(10,(volX-1)*5)*Math.sign(pd));
+  if(lowRej>0.55&&rangePos<0.4)s+=5; else if(highRej>0.55&&rangePos>0.6)s-=5;
+  return Math.max(-100,Math.min(100,s));
+}
+function backtestSymbol(d,w){
+  const D=d.filter(k=>candleClosed(k,DAY_MS));
+  const W=w.filter(k=>candleClosed(k,WEEK_MS));
+  const res={n:0,trig:0,wins:0,losses:0,timeouts:0,sumR:0,concl:0,
+             long:{w:0,l:0},short:{w:0,l:0}};
+  if(D.length<40||W.length<6) return res;
+  // ATR14 dizisi
+  const tr=[0];
+  for(let i=1;i<D.length;i++){
+    const pc=D[i-1].c;
+    tr.push(Math.max(D[i].h-D[i].l, Math.abs(D[i].h-pc), Math.abs(D[i].l-pc)));
+  }
+  const atrAt=i=>{ const m=Math.min(14,i); let s=0; for(let j=i-m+1;j<=i;j++)s+=tr[j]; return s/m; };
+  let wPtr=0, prevScore=0, lastSig=-99;
+  for(let i=30;i<D.length-1;i++){
+    while(wPtr<W.length && W[wPtr].t+WEEK_MS<=D[i].t+DAY_MS) wPtr++;
+    const sc=btScore(D.slice(0,i+1), W.slice(0,wPtr));
+    const cross=(sc>=40&&prevScore<40)?1:(sc<=-40&&prevScore>-40)?-1:0;
+    prevScore=sc;
+    if(!cross || i-lastSig<5) continue;
+    lastSig=i;
+    const lng=cross>0, atr=atrAt(i);
+    const entry=lng?D[i].h:D[i].l;
+    const sl=lng?Math.min(D[i-2].l,D[i-1].l,D[i].l)-0.3*atr
+                :Math.max(D[i-2].h,D[i-1].h,D[i].h)+0.3*atr;
+    const R=Math.abs(entry-sl);
+    if(R<=0) continue;
+    res.n++;
+    const tp=lng?entry+1.5*R:entry-1.5*R;
+    let trig=false, done=false, lastJ=i;
+    for(let j=i+1;j<=Math.min(i+15,D.length-1);j++){
+      const b=D[j]; lastJ=j;
+      if(!trig){
+        if(j>i+5) break; // 5 mumda tetiklenmedi → sinyal iptal
+        if(lng? b.h>=entry : b.l<=entry) trig=true; else continue;
+      }
+      if(lng? b.l<=sl : b.h>=sl){ res.losses++; res.sumR+=-1; res.concl++; (lng?res.long:res.short).l++; done=true; break; }
+      if(lng? b.h>=tp : b.l<=tp){ res.wins++;  res.sumR+=1.5; res.concl++; (lng?res.long:res.short).w++; done=true; break; }
+    }
+    if(trig){
+      res.trig++;
+      if(!done){ res.timeouts++; res.concl++;
+        const cl=D[lastJ].c;
+        res.sumR+=Math.max(-1,(lng?(cl-entry):(entry-cl))/R); }
+    }
+  }
+  return res;
+}
+
 /* ---------------- scan orchestration ---------------- */
 async function scan(){
   if(STATE.running) return;
@@ -707,6 +827,7 @@ async function scan(){
   let idx=0;
 
   const closedOnly=$("closedOnly").checked;
+  const btOn=$("btChk").checked;
   async function worker(){
     while(idx<syms.length && !STATE.abort){
       const s=syms[idx++];
@@ -720,7 +841,7 @@ async function scan(){
         const volOk = s.quoteVol==null || s.quoteVol>=minVol;
         if(volOk && d.length>=20 && w.length>=6){
           const r=analyze(s.symbol,s,d,w,closedOnly);
-          if(r) rows.push(r);
+          if(r){ if(btOn) r.bt=backtestSymbol(d,w); rows.push(r); }
         }
       }catch(e){ /* tek sembol hatası taramayı durdurmasın */ }
       done++;
@@ -785,6 +906,27 @@ function render(){
   $("bBtc").textContent=ref&&ref.rsiD!=null?ref.symbol.replace("USDT","")+" · "+ref.rsiD.toFixed(1):"–";
   if(ref&&ref.rsiD!=null){ $("bBtc").className="v "+(ref.rsiD<=35?"long":ref.rsiD>=65?"short":""); }
 
+  // backtest özeti
+  const bts=rows.filter(r=>r.bt&&r.bt.n>0).map(r=>r.bt);
+  if(bts.length){
+    const T=bts.reduce((a,b)=>({n:a.n+b.n,trig:a.trig+b.trig,wins:a.wins+b.wins,losses:a.losses+b.losses,
+      timeouts:a.timeouts+b.timeouts,sumR:a.sumR+b.sumR,concl:a.concl+b.concl,
+      long:{w:a.long.w+b.long.w,l:a.long.l+b.long.l},short:{w:a.short.w+b.short.w,l:a.short.l+b.short.l}}),
+      {n:0,trig:0,wins:0,losses:0,timeouts:0,sumR:0,concl:0,long:{w:0,l:0},short:{w:0,l:0}});
+    $("btPanel").style.display="grid";
+    $("btN").textContent=T.n;
+    $("btTrig").textContent=T.n?Math.round(T.trig/T.n*100)+"%":"–";
+    const dec=T.wins+T.losses;
+    $("btWin").textContent=dec?Math.round(T.wins/dec*100)+"% ("+T.wins+"K/"+T.losses+"Z)":"–";
+    $("btWin").className="v "+(dec&&T.wins/dec>=0.5?"long":"short");
+    const avgR=T.concl?T.sumR/T.concl:0;
+    $("btR").textContent=(avgR>=0?"+":"")+avgR.toFixed(2)+"R";
+    $("btR").className="v "+(avgR>=0?"long":"short");
+    const ld=T.long.w+T.long.l, sd=T.short.w+T.short.l;
+    $("btL").textContent=ld?Math.round(T.long.w/ld*100)+"% ("+ld+")":"–";
+    $("btS").textContent=sd?Math.round(T.short.w/sd*100)+"% ("+sd+")":"–";
+  } else $("btPanel").style.display="none";
+
   // featured
   $("featured").style.display="grid";
   const dips=[...rows].filter(r=>r.score>0).sort((a,b)=>b.score-a.score).slice(0,6);
@@ -805,6 +947,7 @@ function renderTable(){
   let rows=[...STATE.rows];
   if(STATE.cat==="dip") rows=rows.filter(r=>r.score>=20);
   if(STATE.cat==="tepe") rows=rows.filter(r=>r.score<=-20);
+  if(STATE.cat==="watch") rows=rows.filter(r=>STATE.watch.has(r.symbol));
   if(STATE.search) rows=rows.filter(r=>r.symbol.includes(STATE.search));
   const k=STATE.sortK, dir=STATE.sortDir;
   rows.sort((a,b)=>{
@@ -821,7 +964,7 @@ function renderTable(){
     const rsiWc=r.rsiW==null?"neu":r.rsiW<=35?"pos":r.rsiW>=65?"neg":"neu";
     const fc=r.fund==null?"neu":r.fund<0?"pos":r.fund>0.0005?"neg":"neu";
     return `<tr class="datarow" data-sym="${r.symbol}" onclick="toggleDetail('${r.symbol}',this)">
-      <td class="sym-td">${r.symbol}</td>
+      <td class="sym-td"><span class="star ${STATE.watch.has(r.symbol)?"on":""}" onclick="event.stopPropagation();toggleWatch('${r.symbol}',this)">★</span>${r.symbol}</td>
       <td>${fmtP(r.price)}</td>
       <td class="${r.chg>=0?"pos":"neg"}">${r.chg>=0?"+":""}${fmt(r.chg,2)}%</td>
       <td>${meterHtml(r.score)}</td>
@@ -912,6 +1055,7 @@ window.toggleDetail=function(sym,tr){
       <ul style="margin-top:8px">
         <li><span>24s Hacim</span><b>$${fmt(r.quoteVol/1e6,1)}M</b></li>
         <li><span>90G Konum</span><b>${(r.rangePos*100).toFixed(0)}% ${r.rangePos<0.25?"(dip bölgesi)":r.rangePos>0.75?"(tepe bölgesi)":""}</b></li>
+        <li><span>📜 Backtest (70g)</span><b>${r.bt?(r.bt.n?`${r.bt.n} sinyal · ${r.bt.wins}K/${r.bt.losses}Z · ${r.bt.concl?((r.bt.sumR/r.bt.concl>=0?"+":"")+(r.bt.sumR/r.bt.concl).toFixed(2)+"R"):""}`:"sinyal üretmedi"):"kapalı"}</b></li>
         <li><span>Grafik / Borsa</span><span>${linkHtml(r)}</span></li>
       </ul></div>
   </div>
@@ -1148,6 +1292,14 @@ function notifyNewSignals(rows){
 }
 
 /* ---------------- events ---------------- */
+restoreSettings();
+SETTING_IDS.forEach(id=>{ const el=$(id); if(el) el.addEventListener("change",saveSettings); });
+// kayıtlı oto-tarama süresi varsa zamanlayıcıyı kur (hemen tarama başlatmadan)
+{ const mins=+$("autoSel").value;
+  if(mins>0) autoTimer=setInterval(()=>{ if(!STATE.running) scan(); }, mins*60000); }
+// kayıtlı piyasa yahoo ise kaynak seçiciyi pasifle
+if($("marketSel").value==="yahoo"){ $("srcSel").disabled=true; $("srcSel").style.opacity=0.4; }
+
 $("marketSel").addEventListener("change",()=>{
   const y=$("marketSel").value==="yahoo";
   $("srcSel").disabled=y;
