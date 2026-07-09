@@ -265,6 +265,16 @@ footer{margin-top:18px;font-family:var(--mono);font-size:11px;color:var(--txt3);
   <div class="bcard"><div class="k">Ortalama R</div><div class="v" id="btR">–</div></div>
   <div class="bcard"><div class="k">Long İsabet</div><div class="v long" id="btL">–</div></div>
   <div class="bcard"><div class="k">Short İsabet</div><div class="v short" id="btS">–</div></div>
+  <div class="bcard" style="grid-column:1/-1">
+    <div class="k" style="color:var(--blue)">🔬 KALİBRASYON LAB — parametreyi değiştir, aynı veriyle anında yeniden test et (veri çekilmez)</div>
+    <div class="planrow" style="margin-top:8px;margin-bottom:0">
+      <label>Eşik<input id="cal-th" type="number" value="40" min="20" max="80" step="5" style="width:70px"></label>
+      <label>TP (×R)<input id="cal-tp" type="number" value="1.5" min="1" max="5" step="0.5" style="width:70px"></label>
+      <label>Min bileşen<input id="cal-mc" type="number" value="1" min="1" max="5" style="width:70px"></label>
+      <button class="planbtn" onclick="recalibrate()">🔁 Yeniden Test</button>
+      <span id="calNote" style="font-family:var(--mono);font-size:11px;color:var(--txt3)"></span>
+    </div>
+  </div>
 </div>
 
 <div class="featured" id="featured" style="display:none">
@@ -712,7 +722,7 @@ function analyze(sym, meta, d, w, closedOnly){
    Sinyal: skor ±40'ı kesince. Giriş: sinyal mumu kırılımı (5 mumda tetiklenmezse iptal).
    SL: son 3 mumun ucu ± 0.3×ATR14. TP: 1.5R. Aynı barda ikisi de görülürse SL sayılır (muhafazakâr). */
 function btScore(dS,wS){
-  if(dS.length<25||wS.length<5) return 0;
+  if(dS.length<25||wS.length<5) return {s:0,comps:0};
   const last=dS[dS.length-1];
   const rsiD=rsi(dS.map(k=>k.c)), rsiW=rsi(wS.map(k=>k.c));
   const dP=detectPatterns(dS)[0]||null, wP=detectPatterns(wS)[0]||null;
@@ -722,18 +732,26 @@ function btScore(dS,wS){
   const vAvg=sma(dS.slice(0,-1).map(k=>k.v),20);
   const volX=vAvg?last.v/vAvg:1;
   const rA=range(last)||1e-9, lowRej=dnWick(last)/rA, highRej=upWick(last)/rA;
-  let s=0;
-  s+= wP?Math.round(25*wP.w*wP.dir):0;
-  s+= dP?Math.round(15*dP.w*dP.dir):0;
-  if(rsiD!=null){ if(rsiD<=30)s+=Math.min(15,Math.round((30-rsiD)*0.75)); else if(rsiD>=70)s-=Math.min(15,Math.round((rsiD-70)*0.75)); }
-  if(rsiW!=null){ if(rsiW<=35)s+=Math.min(10,Math.round((35-rsiW)*0.5)); else if(rsiW>=65)s-=Math.min(10,Math.round((rsiW-65)*0.5)); }
-  if(rangePos<=0.2)s+=Math.round(12*(0.2-rangePos)/0.2); else if(rangePos>=0.8)s-=Math.round(12*(rangePos-0.8)/0.2);
+  const cW= wP?Math.round(25*wP.w*wP.dir):0;
+  const cD= dP?Math.round(15*dP.w*dP.dir):0;
+  let cRsiD=0;
+  if(rsiD!=null){ if(rsiD<=30)cRsiD=Math.min(15,Math.round((30-rsiD)*0.75)); else if(rsiD>=70)cRsiD=-Math.min(15,Math.round((rsiD-70)*0.75)); }
+  let cRsiW=0;
+  if(rsiW!=null){ if(rsiW<=35)cRsiW=Math.min(10,Math.round((35-rsiW)*0.5)); else if(rsiW>=65)cRsiW=-Math.min(10,Math.round((rsiW-65)*0.5)); }
+  let cRng=0;
+  if(rangePos<=0.2)cRng=Math.round(12*(0.2-rangePos)/0.2); else if(rangePos>=0.8)cRng=-Math.round(12*(rangePos-0.8)/0.2);
   const pd=(wP?wP.dir*wP.w:0)*1.5+(dP?dP.dir*dP.w:0);
-  if(volX>=1.5&&pd!==0)s+=Math.round(Math.min(10,(volX-1)*5)*Math.sign(pd));
-  if(lowRej>0.55&&rangePos<0.4)s+=5; else if(highRej>0.55&&rangePos>0.6)s-=5;
-  return Math.max(-100,Math.min(100,s));
+  let cVol=0;
+  if(volX>=1.5&&pd!==0)cVol=Math.round(Math.min(10,(volX-1)*5)*Math.sign(pd));
+  let cWick=0;
+  if(lowRej>0.55&&rangePos<0.4)cWick=5; else if(highRej>0.55&&rangePos>0.6)cWick=-5;
+  const s=Math.max(-100,Math.min(100,cW+cD+cRsiD+cRsiW+cRng+cVol+cWick));
+  const sgn=s>=0?1:-1;
+  const comps=[cW,cD,cRsiD,cRsiW,cRng,cVol,cWick].reduce((a,v)=>a+((sgn>0?v>=3:v<=-3)?1:0),0);
+  return {s,comps};
 }
-function backtestSymbol(d,w){
+function backtestSymbol(d,w,opts){
+  const O=Object.assign({th:40,tpR:1.5,minComp:1,cool:5},opts||{});
   const D=d.filter(k=>candleClosed(k,DAY_MS));
   const W=w.filter(k=>candleClosed(k,WEEK_MS));
   const res={n:0,trig:0,wins:0,losses:0,timeouts:0,sumR:0,concl:0,
@@ -749,10 +767,11 @@ function backtestSymbol(d,w){
   let wPtr=0, prevScore=0, lastSig=-99;
   for(let i=30;i<D.length-1;i++){
     while(wPtr<W.length && W[wPtr].t+WEEK_MS<=D[i].t+DAY_MS) wPtr++;
-    const sc=btScore(D.slice(0,i+1), W.slice(0,wPtr));
-    const cross=(sc>=40&&prevScore<40)?1:(sc<=-40&&prevScore>-40)?-1:0;
+    const bs=btScore(D.slice(0,i+1), W.slice(0,wPtr));
+    const sc=bs.s;
+    const cross=(sc>=O.th&&prevScore<O.th)?1:(sc<=-O.th&&prevScore>-O.th)?-1:0;
     prevScore=sc;
-    if(!cross || i-lastSig<5) continue;
+    if(!cross || i-lastSig<O.cool || bs.comps<O.minComp) continue;
     lastSig=i;
     const lng=cross>0, atr=atrAt(i);
     const entry=lng?D[i].h:D[i].l;
@@ -761,7 +780,7 @@ function backtestSymbol(d,w){
     const R=Math.abs(entry-sl);
     if(R<=0) continue;
     res.n++;
-    const tp=lng?entry+1.5*R:entry-1.5*R;
+    const tp=lng?entry+O.tpR*R:entry-O.tpR*R;
     let trig=false, done=false, lastJ=i;
     for(let j=i+1;j<=Math.min(i+15,D.length-1);j++){
       const b=D[j]; lastJ=j;
@@ -770,7 +789,7 @@ function backtestSymbol(d,w){
         if(lng? b.h>=entry : b.l<=entry) trig=true; else continue;
       }
       if(lng? b.l<=sl : b.h>=sl){ res.losses++; res.sumR+=-1; res.concl++; (lng?res.long:res.short).l++; done=true; break; }
-      if(lng? b.h>=tp : b.l<=tp){ res.wins++;  res.sumR+=1.5; res.concl++; (lng?res.long:res.short).w++; done=true; break; }
+      if(lng? b.h>=tp : b.l<=tp){ res.wins++;  res.sumR+=O.tpR; res.concl++; (lng?res.long:res.short).w++; done=true; break; }
     }
     if(trig){
       res.trig++;
@@ -841,7 +860,7 @@ async function scan(){
         const volOk = s.quoteVol==null || s.quoteVol>=minVol;
         if(volOk && d.length>=20 && w.length>=6){
           const r=analyze(s.symbol,s,d,w,closedOnly);
-          if(r){ if(btOn) r.bt=backtestSymbol(d,w); rows.push(r); }
+          if(r){ if(btOn){ r.bt=backtestSymbol(d,w); r._d=d; r._w=w; } rows.push(r); }
         }
       }catch(e){ /* tek sembol hatası taramayı durdurmasın */ }
       done++;
@@ -889,6 +908,43 @@ function patHtml(p, live){
   if(!p) return `<span class="patlbl none">—</span>`;
   return `<span class="patlbl ${p.dir>0?"bull":"bear"}" ${live?'title="Bu formasyon henüz kapanmamış mumdan geliyor — kapanışta değişebilir!"':''}>${p.name}${live?' <span style="color:var(--warn)">⏳</span>':''}</span>`;
 }
+function renderBacktest(){
+  const rows=STATE.rows;
+  const bts=rows.filter(r=>r.bt&&r.bt.n>0).map(r=>r.bt);
+  if(!bts.length){ $("btPanel").style.display="none"; return; }
+  const T=bts.reduce((a,b)=>({n:a.n+b.n,trig:a.trig+b.trig,wins:a.wins+b.wins,losses:a.losses+b.losses,
+    timeouts:a.timeouts+b.timeouts,sumR:a.sumR+b.sumR,concl:a.concl+b.concl,
+    long:{w:a.long.w+b.long.w,l:a.long.l+b.long.l},short:{w:a.short.w+b.short.w,l:a.short.l+b.short.l}}),
+    {n:0,trig:0,wins:0,losses:0,timeouts:0,sumR:0,concl:0,long:{w:0,l:0},short:{w:0,l:0}});
+  $("btPanel").style.display="grid";
+  $("btN").textContent=T.n;
+  $("btTrig").textContent=T.n?Math.round(T.trig/T.n*100)+"%":"–";
+  const dec=T.wins+T.losses;
+  const tpR=+(document.getElementById("cal-tp")?.value)||1.5;
+  const be=Math.round(100/(1+tpR)); // başabaş isabet %
+  $("btWin").textContent=dec?Math.round(T.wins/dec*100)+"% ("+T.wins+"K/"+T.losses+"Z)":"–";
+  $("btWin").className="v "+(dec&&(T.wins/dec*100)>=be?"long":"short");
+  const avgR=T.concl?T.sumR/T.concl:0;
+  $("btR").textContent=(avgR>=0?"+":"")+avgR.toFixed(2)+"R";
+  $("btR").className="v "+(avgR>=0?"long":"short");
+  const ld=T.long.w+T.long.l, sd=T.short.w+T.short.l;
+  $("btL").textContent=ld?Math.round(T.long.w/ld*100)+"% ("+ld+")":"–";
+  $("btS").textContent=sd?Math.round(T.short.w/sd*100)+"% ("+sd+")":"–";
+  const cn=$("calNote"); if(cn) cn.textContent=`başabaş isabet: %${be}`;
+}
+window.recalibrate=function(){
+  const th=Math.min(80,Math.max(20,+$("cal-th").value||40));
+  const tpR=Math.min(5,Math.max(1,+$("cal-tp").value||1.5));
+  const mc=Math.min(5,Math.max(1,+$("cal-mc").value||1));
+  let any=false;
+  for(const r of STATE.rows){
+    if(r._d&&r._w){ r.bt=backtestSymbol(r._d,r._w,{th,tpR,minComp:mc}); any=true; }
+  }
+  if(!any){ $("calNote").textContent="önce Backtest açıkken bir tarama yap"; return; }
+  renderBacktest();
+  renderTable(); // detay satırındaki sembol karneleri de güncellensin
+};
+
 function render(){
   const rows=STATE.rows;
   if(!rows.length){ $("emptyState").style.display="block"; $("tbl").style.display="none"; return; }
@@ -907,25 +963,7 @@ function render(){
   if(ref&&ref.rsiD!=null){ $("bBtc").className="v "+(ref.rsiD<=35?"long":ref.rsiD>=65?"short":""); }
 
   // backtest özeti
-  const bts=rows.filter(r=>r.bt&&r.bt.n>0).map(r=>r.bt);
-  if(bts.length){
-    const T=bts.reduce((a,b)=>({n:a.n+b.n,trig:a.trig+b.trig,wins:a.wins+b.wins,losses:a.losses+b.losses,
-      timeouts:a.timeouts+b.timeouts,sumR:a.sumR+b.sumR,concl:a.concl+b.concl,
-      long:{w:a.long.w+b.long.w,l:a.long.l+b.long.l},short:{w:a.short.w+b.short.w,l:a.short.l+b.short.l}}),
-      {n:0,trig:0,wins:0,losses:0,timeouts:0,sumR:0,concl:0,long:{w:0,l:0},short:{w:0,l:0}});
-    $("btPanel").style.display="grid";
-    $("btN").textContent=T.n;
-    $("btTrig").textContent=T.n?Math.round(T.trig/T.n*100)+"%":"–";
-    const dec=T.wins+T.losses;
-    $("btWin").textContent=dec?Math.round(T.wins/dec*100)+"% ("+T.wins+"K/"+T.losses+"Z)":"–";
-    $("btWin").className="v "+(dec&&T.wins/dec>=0.5?"long":"short");
-    const avgR=T.concl?T.sumR/T.concl:0;
-    $("btR").textContent=(avgR>=0?"+":"")+avgR.toFixed(2)+"R";
-    $("btR").className="v "+(avgR>=0?"long":"short");
-    const ld=T.long.w+T.long.l, sd=T.short.w+T.short.l;
-    $("btL").textContent=ld?Math.round(T.long.w/ld*100)+"% ("+ld+")":"–";
-    $("btS").textContent=sd?Math.round(T.short.w/sd*100)+"% ("+sd+")":"–";
-  } else $("btPanel").style.display="none";
+  renderBacktest();
 
   // featured
   $("featured").style.display="grid";
