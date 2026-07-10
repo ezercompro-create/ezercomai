@@ -1,4 +1,5 @@
 {
+  "regions": ["fra1"],
   "rewrites": [
     { "source": "/bx/:path*", "destination": "https://fapi.binance.com/:path*" },
     { "source": "/by/:path*", "destination": "https://api.bybit.com/:path*" },
