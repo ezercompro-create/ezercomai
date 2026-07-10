@@ -14,9 +14,9 @@ const TOP_N = 100, MINCOMP = 3, TH = 40;
    UYARI: Bu değerler repoda görünür — repo mutlaka Private kalsın.
    Token sızarsa BotFather'da /revoke ile yenileyebilirsin. */
 const CFG = {
-  TELEGRAM_TOKEN:   process.env.TELEGRAM_TOKEN   || "8569336633:AAHkduWlX58PBhVIdwgKb2BBcivjpvOLbx0",
-  TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || "6752108751",
-  SCAN_KEY:         process.env.SCAN_KEY         || "ezercom123"  // boş bırakılırsa /api/scan korumasızdır
+  TELEGRAM_TOKEN:   process.env.TELEGRAM_TOKEN   || "BURAYA_BOT_TOKEN",
+  TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || "BURAYA_CHAT_ID",
+  SCAN_KEY:         process.env.SCAN_KEY         || ""  // boş bırakılırsa /api/scan korumasızdır
 };
 /* =========================================== */
 
@@ -32,6 +32,38 @@ function rsi(c,p=14){ if(c.length<p+1) return null; let g=0,l=0;
     ag=(ag*(p-1)+Math.max(d,0))/p; al=(al*(p-1)+Math.max(-d,0))/p;}
   return al===0?100:100-100/(1+ag/al); }
 function trendCtx(c,n=8){ if(c.length<n)return 0; const s=c.slice(-n); return s[0]>0?(s[s.length-1]-s[0])/s[0]:0; }
+function rsiSeries(closes,p=14){
+  const out=new Array(closes.length).fill(null);
+  if(closes.length<p+1) return out;
+  let g=0,l=0;
+  for(let i=1;i<=p;i++){const d=closes[i]-closes[i-1]; if(d>0)g+=d; else l-=d;}
+  let ag=g/p,al=l/p;
+  out[p]=al===0?100:100-100/(1+ag/al);
+  for(let i=p+1;i<closes.length;i++){const d=closes[i]-closes[i-1];
+    ag=(ag*(p-1)+Math.max(d,0))/p; al=(al*(p-1)+Math.max(-d,0))/p;
+    out[i]=al===0?100:100-100/(1+ag/al);}
+  return out;
+}
+function detectDivergence(d){
+  const n=d.length; if(n<25) return 0;
+  const lows=d.map(k=>k.l), highs=d.map(k=>k.h);
+  const rs=rsiSeries(d.map(k=>k.c));
+  const from=Math.max(2,n-35);
+  const swL=[],swH=[];
+  for(let i=from;i<n-1;i++){
+    if(lows[i]<lows[i-1]&&lows[i]<lows[i-2]&&lows[i]<lows[i+1]&&(i+2>=n||lows[i]<lows[i+2])) swL.push(i);
+    if(highs[i]>highs[i-1]&&highs[i]>highs[i-2]&&highs[i]>highs[i+1]&&(i+2>=n||highs[i]>highs[i+2])) swH.push(i);
+  }
+  if(swL.length>=2){
+    const a=swL[swL.length-2], b=swL[swL.length-1];
+    if(b>n-8&&lows[b]<lows[a]*0.995&&rs[a]!=null&&rs[b]!=null&&rs[b]>rs[a]+2) return (rs[b]-rs[a]>6)?10:6;
+  }
+  if(swH.length>=2){
+    const a=swH[swH.length-2], b=swH[swH.length-1];
+    if(b>n-8&&highs[b]>highs[a]*1.005&&rs[a]!=null&&rs[b]!=null&&rs[b]<rs[a]-2) return (rs[a]-rs[b]>6)?-10:-6;
+  }
+  return 0;
+}
 
 function detectPatterns(kl){
   const out=[]; if(kl.length<5) return out;
@@ -101,6 +133,7 @@ function analyze(sym, meta, dAll, wAll){
   parts.push(v); v=0;
   if(lowRej>0.55&&rangePos<0.4)v=5; else if(highRej>0.55&&rangePos>0.6)v=-5;
   parts.push(v);
+  parts.push(detectDivergence(d)); // RSI uyumsuzluğu ±10
   const score=Math.max(-100,Math.min(100,parts.reduce((a,b)=>a+b,0)));
   const sgn=score>=0?1:-1;
   const comps=parts.reduce((a,x)=>a+((sgn>0?x>=3:x<=-3)?1:0),0);
