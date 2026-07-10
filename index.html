@@ -191,7 +191,7 @@ footer{margin-top:18px;font-family:var(--mono);font-size:11px;color:var(--txt3);
 <header>
   <div class="logo">
     <h1>EzercomAI · <span class="dip">Dip</span> & <span class="tepe">Tepe</span> Radar</h1>
-    <span>Binance USDT-M Perpetual · 1W + 1D formasyon & momentum taraması · <b style="color:var(--blue)">v2.6</b></span>
+    <span>Binance USDT-M Perpetual · 1W + 1D formasyon & momentum taraması · <b style="color:var(--blue)">v2.7</b></span>
   </div>
   <div class="controls">
     <label class="ctl">Piyasa
@@ -240,6 +240,7 @@ footer{margin-top:18px;font-family:var(--mono);font-size:11px;color:var(--txt3);
 
 <div id="fallbackBanner">⚠ DİKKAT: Binance verisine ulaşılamadı — <b>Bybit yedek kaynağı</b> kullanılıyor. Sinyaller Bybit fiyatlarına dayanır; Binance'te işlem açmadan önce fiyat/funding farklarını kontrol et!</div>
 <div id="proxyBanner" style="display:none;background:rgba(91,141,239,.12);border:1px solid var(--blue);color:var(--blue);border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:13px"></div>
+<div id="regimeBanner" style="display:none;background:var(--warn-dim);border:1px solid var(--warn);color:var(--warn);border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:13px"></div>
 <div id="errBanner"></div>
 
 <div id="progWrap">
@@ -276,6 +277,17 @@ footer{margin-top:18px;font-family:var(--mono);font-size:11px;color:var(--txt3);
       <span id="calNote" style="font-family:var(--mono);font-size:11px;color:var(--txt3)"></span>
     </div>
   </div>
+</div>
+
+<div id="journalPanel" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:12px;margin-bottom:16px;overflow:hidden">
+  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)">
+    <b style="font-size:13px;color:var(--blue)">📓 SİNYAL GÜNLÜĞÜ — canlı forward-test</b>
+    <span id="jSum" style="font-family:var(--mono);font-size:11px;color:var(--txt2)"></span>
+    <button onclick="clearJournalClosed()" style="margin-left:auto;background:var(--panel2);border:1px solid var(--border2);color:var(--txt2);font-size:11px;padding:5px 10px">🗑 Kapananları temizle</button>
+  </div>
+  <div style="overflow:auto"><table style="min-width:800px"><thead><tr>
+    <th>Sembol</th><th>Yön</th><th>Tarih</th><th>Skor</th><th>Giriş</th><th>SL</th><th>TP</th><th>Durum</th><th>Sonuç</th>
+  </tr></thead><tbody id="jBody"></tbody></table></div>
 </div>
 
 <div class="featured" id="featured" style="display:none">
@@ -321,7 +333,7 @@ footer{margin-top:18px;font-family:var(--mono);font-size:11px;color:var(--txt3);
 </div>
 
 <footer>
-  Skor bileşenleri: 1W formasyon ±25 · 1D formasyon ±15 · RSI(1D) ±15 · RSI(1W) ±10 · 90G range konumu ±12 · Hacim teyidi ±10 · Funding aşırılığı ±8 · Fitil reddi ±5.<br>
+  Skor bileşenleri: 1W formasyon ±25 · 1D formasyon ±15 · RSI(1D) ±15 · RSI(1W) ±10 · 90G range konumu ±12 · Hacim teyidi ±10 · Funding aşırılığı ±8 · Fitil reddi ±5 · RSI uyumsuzluğu ±10.<br>
   Formasyonlar trend bağlamıyla doğrulanır (düşüş trendi olmadan hammer sayılmaz). Bu araç sinyal üretir, yatırım tavsiyesi değildir — giriş öncesi kendi teyidini yap.
 </footer>
 </div>
@@ -514,6 +526,44 @@ function rsi(closes, period=14){
 }
 function sma(arr,n){ if(arr.length<n) return null; let s=0; for(let i=arr.length-n;i<arr.length;i++)s+=arr[i]; return s/n; }
 
+/* RSI serisi (uyumsuzluk tespiti için) */
+function rsiSeries(closes,p=14){
+  const out=new Array(closes.length).fill(null);
+  if(closes.length<p+1) return out;
+  let g=0,l=0;
+  for(let i=1;i<=p;i++){const d=closes[i]-closes[i-1]; if(d>0)g+=d; else l-=d;}
+  let ag=g/p,al=l/p;
+  out[p]=al===0?100:100-100/(1+ag/al);
+  for(let i=p+1;i<closes.length;i++){const d=closes[i]-closes[i-1];
+    ag=(ag*(p-1)+Math.max(d,0))/p; al=(al*(p-1)+Math.max(-d,0))/p;
+    out[i]=al===0?100:100-100/(1+ag/al);}
+  return out;
+}
+/* RSI uyumsuzluğu: fiyat daha düşük dip + RSI daha yüksek dip = boğa (+), tersi ayı (−).
+   Son 35 mumda, uyumsuzluğun son 8 mum içinde tamamlanmış olması şartıyla. Getiri: ±6 / ±10 */
+function detectDivergence(d){
+  const n=d.length; if(n<25) return 0;
+  const lows=d.map(k=>k.l), highs=d.map(k=>k.h);
+  const rs=rsiSeries(d.map(k=>k.c));
+  const from=Math.max(2,n-35);
+  const swL=[],swH=[];
+  for(let i=from;i<n-1;i++){
+    if(lows[i]<lows[i-1]&&lows[i]<lows[i-2]&&lows[i]<lows[i+1]&&(i+2>=n||lows[i]<lows[i+2])) swL.push(i);
+    if(highs[i]>highs[i-1]&&highs[i]>highs[i-2]&&highs[i]>highs[i+1]&&(i+2>=n||highs[i]>highs[i+2])) swH.push(i);
+  }
+  if(swL.length>=2){
+    const a=swL[swL.length-2], b=swL[swL.length-1];
+    if(b>n-8 && lows[b]<lows[a]*0.995 && rs[a]!=null&&rs[b]!=null && rs[b]>rs[a]+2)
+      return (rs[b]-rs[a]>6)?10:6;
+  }
+  if(swH.length>=2){
+    const a=swH[swH.length-2], b=swH[swH.length-1];
+    if(b>n-8 && highs[b]>highs[a]*1.005 && rs[a]!=null&&rs[b]!=null && rs[b]<rs[a]-2)
+      return (rs[a]-rs[b]>6)?-10:-6;
+  }
+  return 0;
+}
+
 /* trend context: son N kapanışın lineer eğimi (normalize) */
 function trendCtx(closes, n=8){
   if(closes.length<n) return 0;
@@ -704,6 +754,8 @@ function analyze(sym, meta, d, w, closedOnly, minComp=1){
   if(lowRej>0.55 && rangePos<0.4) sWick=5;
   else if(highRej>0.55 && rangePos>0.6) sWick=-5;
   add("Fitil reddi", sWick);
+  // RSI uyumsuzluğu ±10
+  add("RSI uyumsuzluk", detectDivergence(d));
 
   score=Math.max(-100,Math.min(100,score));
 
@@ -754,9 +806,10 @@ function btScore(dS,wS){
   if(volX>=1.5&&pd!==0)cVol=Math.round(Math.min(10,(volX-1)*5)*Math.sign(pd));
   let cWick=0;
   if(lowRej>0.55&&rangePos<0.4)cWick=5; else if(highRej>0.55&&rangePos>0.6)cWick=-5;
-  const s=Math.max(-100,Math.min(100,cW+cD+cRsiD+cRsiW+cRng+cVol+cWick));
+  const cDiv=detectDivergence(dS);
+  const s=Math.max(-100,Math.min(100,cW+cD+cRsiD+cRsiW+cRng+cVol+cWick+cDiv));
   const sgn=s>=0?1:-1;
-  const comps=[cW,cD,cRsiD,cRsiW,cRng,cVol,cWick].reduce((a,v)=>a+((sgn>0?v>=3:v<=-3)?1:0),0);
+  const comps=[cW,cD,cRsiD,cRsiW,cRng,cVol,cWick,cDiv].reduce((a,v)=>a+((sgn>0?v>=3:v<=-3)?1:0),0);
   return {s,comps};
 }
 function backtestSymbol(d,w,opts){
@@ -809,6 +862,85 @@ function backtestSymbol(d,w,opts){
   }
   return res;
 }
+
+/* ---------------- 📓 Sinyal Günlüğü (canlı forward-test) ----------------
+   Her "Dönüş Hazır" sinyali otomatik kaydedilir ve sonraki taramalarda
+   backtest'le AYNI kurallarla değerlendirilir:
+   giriş = sinyal mumu kırılımı (5 mumda tetiklenmezse iptal),
+   SL = son 3 mum ± 0.3 ATR, TP = 1.5R, 15 mumda sonuçlanmazsa zaman aşımı. */
+function loadJournal(){ try{ return JSON.parse(store.get("ez_journal")||"[]"); }catch(e){ return []; } }
+function saveJournal(J){ store.set("ez_journal", JSON.stringify(J)); }
+function updateJournal(rows){
+  const J=loadJournal();
+  const bySym={}; rows.forEach(r=>bySym[r.symbol]=r);
+  // 1) yeni sinyalleri kaydet
+  for(const r of rows){
+    if(r.cat!=="dipReady"&&r.cat!=="topReady") continue;
+    const dir=r.score>=0?1:-1;
+    if(J.some(e=>e.sym===r.symbol&&e.dir===dir&&(e.status==="bekliyor"||e.status==="açık"))) continue;
+    const D=(r._d||[]).filter(k=>candleClosed(k,DAY_MS));
+    if(D.length<5||!r.atr) continue;
+    const last=D[D.length-1];
+    const entry=dir>0?last.h:last.l;
+    const sl=dir>0?Math.min(r.sigLow,entry)-0.3*r.atr:Math.max(r.sigHigh,entry)+0.3*r.atr;
+    const R=Math.abs(entry-sl); if(R<=0) continue;
+    J.push({ id:r.symbol+"-"+dir+"-"+last.t, sym:r.symbol, dir, t:last.t, score:r.score,
+      entry, sl, tp:dir>0?entry+1.5*R:entry-1.5*R, status:"bekliyor", r:null, closedT:null });
+  }
+  // 2) açık kayıtları değerlendir
+  for(const e of J){
+    if(e.status!=="bekliyor"&&e.status!=="açık") continue;
+    const row=bySym[e.sym]; if(!row||!row._d) continue;
+    const D=row._d.filter(k=>candleClosed(k,DAY_MS)&&k.t>e.t);
+    const Rd=Math.abs(e.entry-e.sl);
+    let i=0;
+    for(const b of D){
+      i++;
+      if(e.status==="bekliyor"){
+        if(i>5){ e.status="iptal"; e.closedT=b.t; break; }
+        if(e.dir>0? b.h>=e.entry : b.l<=e.entry) e.status="açık"; else continue;
+      }
+      if(e.dir>0? b.l<=e.sl : b.h>=e.sl){ e.status="SL"; e.r=-1; e.closedT=b.t; break; }
+      if(e.dir>0? b.h>=e.tp : b.l<=e.tp){ e.status="TP"; e.r=1.5; e.closedT=b.t; break; }
+      if(i>=15){ e.status="zaman aşımı";
+        e.r=Math.max(-1,(e.dir>0?(b.c-e.entry):(e.entry-b.c))/Rd);
+        e.closedT=b.t; break; }
+    }
+  }
+  // 3) 60 günden eski kapalıları buda
+  const cutoff=Date.now()-60*DAY_MS;
+  const J2=J.filter(e=>!(e.closedT&&e.closedT<cutoff));
+  saveJournal(J2);
+  return J2;
+}
+function renderJournal(){
+  const J=loadJournal();
+  const panel=$("journalPanel");
+  if(!J.length){ panel.style.display="none"; return; }
+  panel.style.display="block";
+  const done=J.filter(e=>e.r!=null);
+  const wins=done.filter(e=>e.status==="TP").length, losses=done.filter(e=>e.status==="SL").length;
+  const sumR=done.reduce((a,e)=>a+e.r,0);
+  const open=J.filter(e=>e.status==="açık").length, wait=J.filter(e=>e.status==="bekliyor").length;
+  $("jSum").textContent=`${J.length} kayıt · bekleyen ${wait} · açık ${open} · ${wins}K/${losses}Z · toplam ${sumR>=0?"+":""}${sumR.toFixed(2)}R`;
+  const stC={"bekliyor":"neu","açık":"pos","TP":"pos","SL":"neg","iptal":"neu","zaman aşımı":"neu"};
+  const rows=[...J].sort((a,b)=>b.t-a.t).map(e=>{
+    const d=new Date(e.t).toLocaleDateString("tr-TR",{day:"2-digit",month:"2-digit"});
+    return `<tr>
+      <td class="sym-td">${e.sym}</td>
+      <td class="${e.dir>0?"pos":"neg"}">${e.dir>0?"LONG":"SHORT"}</td>
+      <td>${d}</td><td>${e.score>0?"+":""}${e.score}</td>
+      <td>${fmtP(e.entry)}</td><td>${fmtP(e.sl)}</td><td>${fmtP(e.tp)}</td>
+      <td class="${stC[e.status]||"neu"}">${e.status.toUpperCase()}</td>
+      <td class="${e.r==null?"neu":e.r>=0?"pos":"neg"}">${e.r==null?"–":(e.r>=0?"+":"")+e.r.toFixed(2)+"R"}</td>
+    </tr>`;
+  }).join("");
+  $("jBody").innerHTML=rows;
+}
+window.clearJournalClosed=function(){
+  saveJournal(loadJournal().filter(e=>e.status==="bekliyor"||e.status==="açık"));
+  renderJournal();
+};
 
 /* ---------------- scan orchestration ---------------- */
 async function scan(){
@@ -873,7 +1005,7 @@ async function scan(){
         const volOk = s.quoteVol==null || s.quoteVol>=minVol;
         if(volOk && d.length>=20 && w.length>=6){
           const r=analyze(s.symbol,s,d,w,closedOnly,btOpts.minComp);
-          if(r){ if(btOn){ r.bt=backtestSymbol(d,w,btOpts); r._d=d; r._w=w; } rows.push(r); }
+          if(r){ r._d=d; r._w=w; if(btOn) r.bt=backtestSymbol(d,w,btOpts); rows.push(r); }
         }
       }catch(e){ /* tek sembol hatası taramayı durdurmasın */ }
       done++;
@@ -892,6 +1024,7 @@ async function scan(){
   }
   STATE.rows=rows;
   notifyNewSignals(rows);
+  updateJournal(rows);
   setProg(100, STATE.abort?`Durduruldu — ${rows.length} sembol analiz edildi.`:`Tamamlandı — ${rows.length} sembol analiz edildi. ${new Date().toLocaleTimeString("tr-TR")}`);
   render();
   STATE.running=false;
@@ -991,7 +1124,18 @@ function render(){
     $("bRegime").textContent=STATE.regime==="LONG"?"LONG LEHİNE":STATE.regime==="SHORT"?"SHORT LEHİNE":"NÖTR";
     $("bRegime").className="v "+(STATE.regime==="LONG"?"long":STATE.regime==="SHORT"?"short":"");
     $("bRegime").title="Funding + piyasa genişliği + referans RSI birleşimi. Rejim karşıtı sinyaller ⚠ ile işaretlenir — backtest bu rejimde karşı yön isabetinin düşük olduğunu gösterdi.";
+    // 🔔 rejim değişim alarmı
+    const prevReg=store.get("ez_regime");
+    if(prevReg&&prevReg!==STATE.regime){
+      $("regimeBanner").style.display="block";
+      $("regimeBanner").innerHTML=`🔔 <b>REJİM DEĞİŞTİ:</b> ${prevReg} → <b>${STATE.regime}</b>. Rüzgâr dönüyor — açık pozisyonları ve izleme listesini gözden geçir; eski rejimin sinyalleri güvenilirliğini yitirmiş olabilir.`;
+      if(typeof Notification!=="undefined"&&Notification.permission==="granted"){
+        try{ new Notification("EzercomAI Radar — REJİM DEĞİŞTİ", {body:prevReg+" → "+STATE.regime}); }catch(e){}
+      }
+    }
+    store.set("ez_regime", STATE.regime);
   }
+  renderJournal();
 
   // backtest özeti
   renderBacktest();
