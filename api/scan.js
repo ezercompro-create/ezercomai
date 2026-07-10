@@ -14,9 +14,9 @@ const TOP_N = 100, MINCOMP = 3, TH = 40;
    UYARI: Bu değerler repoda görünür — repo mutlaka Private kalsın.
    Token sızarsa BotFather'da /revoke ile yenileyebilirsin. */
 const CFG = {
-  TELEGRAM_TOKEN:   process.env.TELEGRAM_TOKEN   || "BURAYA_BOT_TOKEN",
-  TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || "BURAYA_CHAT_ID",
-  SCAN_KEY:         process.env.SCAN_KEY         || ""  // boş bırakılırsa /api/scan korumasızdır
+  TELEGRAM_TOKEN:   process.env.TELEGRAM_TOKEN   || "8569336633:AAHkduWlX58PBhVIdwgKb2BBcivjpvOLbx0",
+  TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || "6752108751",
+  SCAN_KEY:         process.env.SCAN_KEY         || "ezercom123"  // boş bırakılırsa /api/scan korumasızdır
 };
 /* =========================================== */
 
