@@ -8,6 +8,18 @@
 const BIN = "https://fapi.binance.com";
 const TOP_N = 100, MINCOMP = 3, TH = 40;
 
+/* ================= AYARLAR =================
+   Tercihen Vercel → Project → Settings → Environment Variables kullan.
+   Oraya erişemiyorsan aşağıdaki tırnakların içini DOĞRUDAN doldur.
+   UYARI: Bu değerler repoda görünür — repo mutlaka Private kalsın.
+   Token sızarsa BotFather'da /revoke ile yenileyebilirsin. */
+const CFG = {
+  TELEGRAM_TOKEN:   process.env.TELEGRAM_TOKEN   || "BURAYA_BOT_TOKEN",
+  TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || "BURAYA_CHAT_ID",
+  SCAN_KEY:         process.env.SCAN_KEY         || ""  // boş bırakılırsa /api/scan korumasızdır
+};
+/* =========================================== */
+
 /* ---------- göstergeler (dashboard motoruyla birebir) ---------- */
 const body=k=>Math.abs(k.c-k.o), range=k=>k.h-k.l;
 const upWick=k=>k.h-Math.max(k.o,k.c), dnWick=k=>Math.min(k.o,k.c)-k.l;
@@ -153,8 +165,9 @@ function buildMessage(rows, universe){
 }
 
 async function sendTelegram(msg){
-  const token=process.env.TELEGRAM_TOKEN, chat=process.env.TELEGRAM_CHAT_ID;
-  if(!token||!chat) return {sent:false, reason:"TELEGRAM_TOKEN / TELEGRAM_CHAT_ID tanımlı değil"};
+  const token=CFG.TELEGRAM_TOKEN, chat=CFG.TELEGRAM_CHAT_ID;
+  if(!token||!chat||token.startsWith("BURAYA")||String(chat).startsWith("BURAYA"))
+    return {sent:false, reason:"TELEGRAM_TOKEN / TELEGRAM_CHAT_ID doldurulmamış"};
   const r=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{
     method:"POST", headers:{"Content-Type":"application/json"},
     body:JSON.stringify({chat_id:chat, text:msg, parse_mode:"HTML", disable_web_page_preview:true})});
@@ -163,8 +176,8 @@ async function sendTelegram(msg){
 }
 
 module.exports = async (req, res) => {
-  // koruma: SCAN_KEY tanımlıysa ?key= eşleşmeli; Vercel cron ise CRON_SECRET başlığıyla gelir
-  const key=process.env.SCAN_KEY;
+  // koruma: SCAN_KEY doluysa ?key= eşleşmeli; Vercel cron ise CRON_SECRET başlığıyla gelir
+  const key=CFG.SCAN_KEY;
   const auth=req.headers["authorization"]||"";
   const isCron=process.env.CRON_SECRET && auth===`Bearer ${process.env.CRON_SECRET}`;
   if(key && req.query.key!==key && !isCron)
