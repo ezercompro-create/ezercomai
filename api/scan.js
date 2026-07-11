@@ -14,9 +14,9 @@ const TOP_N = 100, MINCOMP = 3, TH = 40;
    UYARI: Bu değerler repoda görünür — repo mutlaka Private kalsın.
    Token sızarsa BotFather'da /revoke ile yenileyebilirsin. */
 const CFG = {
-  TELEGRAM_TOKEN:   process.env.TELEGRAM_TOKEN   || "BURAYA_BOT_TOKEN",
-  TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || "BURAYA_CHAT_ID",
-  SCAN_KEY:         process.env.SCAN_KEY         || ""  // boş bırakılırsa /api/scan korumasızdır
+  TELEGRAM_TOKEN:   process.env.TELEGRAM_TOKEN   || "8280685861:AAG8NE7hW_aXaV0RB5T9HQPV_NAg2P-fmFI",
+  TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || "6752108751",
+  SCAN_KEY:         process.env.SCAN_KEY         || "ezercom123"  // boş bırakılırsa /api/scan korumasızdır
 };
 /* =========================================== */
 
@@ -209,10 +209,15 @@ async function sendTelegram(msg){
 }
 
 module.exports = async (req, res) => {
-  // koruma: SCAN_KEY doluysa ?key= eşleşmeli; Vercel cron ise CRON_SECRET başlığıyla gelir
+  // koruma: SCAN_KEY doluysa ?key= eşleşmeli.
+  // İSTİSNA: Vercel'in kendi cron tetiklemeleri (user-agent: vercel-cron) her zaman geçer,
+  // yoksa gece taramaları 401'e takılır. CRON_SECRET env tanımlıysa o da kabul edilir.
   const key=CFG.SCAN_KEY;
   const auth=req.headers["authorization"]||"";
-  const isCron=process.env.CRON_SECRET && auth===`Bearer ${process.env.CRON_SECRET}`;
+  const ua=(req.headers["user-agent"]||"").toLowerCase();
+  const isCron= ua.includes("vercel-cron")
+    || req.headers["x-vercel-cron"]==="1"
+    || (process.env.CRON_SECRET && auth===`Bearer ${process.env.CRON_SECRET}`);
   if(key && req.query.key!==key && !isCron)
     return res.status(401).json({ok:false, error:"key gerekli (?key=...)"});
   try{
