@@ -191,12 +191,13 @@ footer{margin-top:18px;font-family:var(--mono);font-size:11px;color:var(--txt3);
 <header>
   <div class="logo">
     <h1>EzercomAI · <span class="dip">Dip</span> & <span class="tepe">Tepe</span> Radar</h1>
-    <span>Binance USDT-M Perpetual · 1W + 1D formasyon & momentum taraması · <b style="color:var(--blue)">v2.7</b></span>
+    <span>Binance USDT-M Perpetual · 1W + 1D formasyon & momentum taraması · <b style="color:var(--blue)">v2.8</b></span>
   </div>
   <div class="controls">
     <label class="ctl">Piyasa
       <select id="marketSel">
         <option value="crypto" selected>Kripto (Futures)</option>
+        <option value="forex">Forex Majörleri (EURUSD…)</option>
         <option value="yahoo">BIST100 + Altın (XAUUSD)</option>
       </select>
     </label>
@@ -509,6 +510,35 @@ const YAHOO_UNIVERSE=[
     "CANTE","KLSER","REEDR","MIATK","OBAMS","ARDYZ","PENTA","LOGO","KAREL","INDES"]
    .map(c=>({d:c, y:c+".IS", tv:"BIST:"+c}))
 ];
+
+/* Forex majörleri + majör çaprazlar + metal. Not: =X sembollerinde hacim verisi yoktur,
+   hacim teyidi bileşeni 0 kalır ve hacim filtresi uygulanmaz. */
+const FOREX_UNIVERSE=[
+ {d:"EURUSD",y:"EURUSD=X",tv:"OANDA:EURUSD"},
+ {d:"GBPUSD",y:"GBPUSD=X",tv:"OANDA:GBPUSD"},
+ {d:"USDJPY",y:"USDJPY=X",tv:"OANDA:USDJPY"},
+ {d:"USDCHF",y:"USDCHF=X",tv:"OANDA:USDCHF"},
+ {d:"USDCAD",y:"USDCAD=X",tv:"OANDA:USDCAD"},
+ {d:"AUDUSD",y:"AUDUSD=X",tv:"OANDA:AUDUSD"},
+ {d:"NZDUSD",y:"NZDUSD=X",tv:"OANDA:NZDUSD"},
+ {d:"EURGBP",y:"EURGBP=X",tv:"OANDA:EURGBP"},
+ {d:"EURJPY",y:"EURJPY=X",tv:"OANDA:EURJPY"},
+ {d:"GBPJPY",y:"GBPJPY=X",tv:"OANDA:GBPJPY"},
+ {d:"AUDJPY",y:"AUDJPY=X",tv:"OANDA:AUDJPY"},
+ {d:"EURCHF",y:"EURCHF=X",tv:"OANDA:EURCHF"},
+ {d:"USDTRY",y:"USDTRY=X",tv:"OANDA:USDTRY"},
+ {d:"XAUUSD",y:"XAUUSD=X",tv:"OANDA:XAUUSD"},
+ {d:"XAGUSD",y:"XAGUSD=X",tv:"OANDA:XAGUSD"}
+];
+Adapters.forex={
+  name:"Forex Majörleri (Yahoo)",
+  metaFromKlines:true,
+  async universe(){
+    return FOREX_UNIVERSE.map(x=>({ symbol:x.d, ysym:x.y, tvs:x.tv,
+      price:0, chg:0, quoteVol:Infinity, funding:null }));
+  },
+  klines: Adapters.yahoo.klines
+};
 
 /* ---------------- indicators ---------------- */
 function rsi(closes, period=14){
@@ -956,13 +986,14 @@ async function scan(){
 
   const market=$("marketSel").value;
   STATE.market=market;
+  const yahooLike = market==="yahoo"||market==="forex";
   let srcKey, adapter, universe;
-  if(market==="yahoo"){ srcKey="yahoo"; adapter=Adapters.yahoo; }
+  if(yahooLike){ srcKey=market; adapter=Adapters[market]; }
   else { srcKey=$("srcSel").value; adapter=Adapters[srcKey]; }
   try{
     universe=await adapter.universe();
   }catch(e){
-    if(market!=="yahoo" && srcKey==="binance"){
+    if(!yahooLike && srcKey==="binance"){
       // otomatik Bybit fallback
       try{
         srcKey="bybit"; adapter=Adapters.bybit;
@@ -970,7 +1001,7 @@ async function scan(){
         $("fallbackBanner").style.display="block";
         $("srcSel").value="bybit";
       }catch(e2){ return fail(`Hiçbir kaynağa ulaşılamadı.<br>· Binance: ${e.message}<br>· Bybit: ${e2.message}<br>· Aracı sunucular da denendi.<br><b>Çözüm:</b> Farklı bir ağ/tarayıcı dene veya sayfayı bir web adresi üzerinden aç.`); }
-    } else return fail((market==="yahoo"?"Yahoo Finance'e":"Bybit'e")+" ulaşılamadı: "+e.message);
+    } else return fail((yahooLike?"Yahoo Finance'e":"Bybit'e")+" ulaşılamadı: "+e.message);
   }
   STATE.source=srcKey;
 
@@ -982,8 +1013,8 @@ async function scan(){
 
   const rows=[]; let done=0; const total=syms.length;
   const viaProxy = !!TRANSPORTS[transportIdx].public; // site-proxy hızlıdır, yavaşlatma sadece genel proxylerde
-  const CONC = market==="yahoo" ? 4 : (viaProxy ? 3 : (srcKey==="binance" ? 8 : 5));
-  const PACE = market==="yahoo" ? 150 : (viaProxy ? 200 : (srcKey==="binance" ? 30 : 80));
+  const CONC = yahooLike ? 4 : (viaProxy ? 3 : (srcKey==="binance" ? 8 : 5));
+  const PACE = yahooLike ? 150 : (viaProxy ? 200 : (srcKey==="binance" ? 30 : 80));
   let idx=0;
 
   const closedOnly=$("closedOnly").checked;
@@ -1020,7 +1051,7 @@ async function scan(){
     const isFile=location.protocol==="file:";
     return fail("Hiç veri alınamadı."
       +(isFile?"<br><b>Sebep büyük olasılıkla:</b> sayfa file:// (yerel dosya) olarak açık — tarayıcı güvenliği ve proxy'ler bu modda istekleri engelliyor.<br><b>Kalıcı çözüm (30 sn):</b> app.netlify.com/drop adresine bu HTML dosyasını sürükle-bırak, verdiği linkten kullan. Alternatif: VS Code 'Live Server' eklentisi veya klasörde <code>python -m http.server</code>."
-      :(market==="yahoo"?"<br>Yahoo istekleri proxy üzerinden gider; ağınız proxy servislerini engelliyor olabilir. Farklı ağ dene veya kapsamı küçültüp tekrar dene.":"<br>Ağ bağlantısını ve filtreleri kontrol et.")));
+      :(yahooLike?"<br>Yahoo istekleri proxy üzerinden gider; ağınız proxy servislerini engelliyor olabilir. Farklı ağ dene veya kapsamı küçültüp tekrar dene.":"<br>Ağ bağlantısını ve filtreleri kontrol et.")));
   }
   STATE.rows=rows;
   notifyNewSignals(rows);
@@ -1107,7 +1138,7 @@ function render(){
   $("bTopF").textContent=rows.filter(r=>r.cat==="topForm").length;
   const funds=rows.map(r=>r.fund).filter(f=>f!=null);
   $("bFund").textContent=funds.length?(funds.reduce((a,b)=>a+b,0)/funds.length*100).toFixed(4)+"%":"–";
-  const ref=rows.find(r=>r.symbol==="BTCUSDT")||rows.find(r=>r.symbol==="XAUUSD");
+  const ref=rows.find(r=>r.symbol==="BTCUSDT")||rows.find(r=>r.symbol==="XAUUSD")||rows.find(r=>r.symbol==="EURUSD");
   $("bBtc").textContent=ref&&ref.rsiD!=null?ref.symbol.replace("USDT","")+" · "+ref.rsiD.toFixed(1):"–";
   if(ref&&ref.rsiD!=null){ $("bBtc").className="v "+(ref.rsiD<=35?"long":ref.rsiD>=65?"short":""); }
 
@@ -1198,7 +1229,7 @@ function renderTable(){
 }
 
 function linkHtml(r){
-  if(STATE.market==="yahoo"){
+  if(STATE.market==="yahoo"||STATE.market==="forex"){
     const tv=`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(r.tvs||("BIST:"+r.symbol))}`;
     const yf=`https://finance.yahoo.com/quote/${encodeURIComponent(r.ysym||r.symbol)}`;
     return `<a class="lnk" href="${tv}" target="_blank" rel="noopener">📈 TV</a> <a class="lnk" href="${yf}" target="_blank" rel="noopener">YAHOO</a>`;
@@ -1513,13 +1544,14 @@ SETTING_IDS.forEach(id=>{ const el=$(id); if(el) el.addEventListener("change",sa
 { const mins=+$("autoSel").value;
   if(mins>0) autoTimer=setInterval(()=>{ if(!STATE.running) scan(); }, mins*60000); }
 // kayıtlı piyasa yahoo ise kaynak seçiciyi pasifle
-if($("marketSel").value==="yahoo"){ $("srcSel").disabled=true; $("srcSel").style.opacity=0.4; }
+if($("marketSel").value!=="crypto"){ $("srcSel").disabled=true; $("srcSel").style.opacity=0.4; }
 
 $("marketSel").addEventListener("change",()=>{
-  const y=$("marketSel").value==="yahoo";
+  const m=$("marketSel").value;
+  const y=m!=="crypto";
   $("srcSel").disabled=y;
   $("srcSel").style.opacity=y?0.4:1;
-  $("minVol").value=y?"100000000":"5000000"; // BIST için ₺100M makul taban
+  $("minVol").value=m==="yahoo"?"100000000":m==="forex"?"0":"5000000"; // forexte hacim verisi yok
 });
 $("scanBtn").addEventListener("click",scan);
 $("stopBtn").addEventListener("click",()=>{STATE.abort=true;});
