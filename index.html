@@ -94,7 +94,10 @@ label.ctl{font-size:11px;color:var(--txt2);display:flex;flex-direction:column;ga
 .count{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--txt3)}
 
 /* ---------- table ---------- */
-.tablewrap{background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:auto}
+.tablewrap{background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:auto;max-height:74vh}
+#tbl thead th{position:sticky;top:0;background:var(--panel);z-index:3;box-shadow:0 1px 0 var(--border)}
+#tbl th:first-child,#tbl td:first-child{position:sticky;left:0;background:var(--panel);z-index:2}
+#tbl thead th:first-child{z-index:4}
 table{width:100%;border-collapse:collapse;min-width:1100px}
 th{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--txt3);
   text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;user-select:none;white-space:nowrap;position:sticky;top:0;background:var(--panel);z-index:2}
@@ -183,6 +186,41 @@ footer{margin-top:18px;font-family:var(--mono);font-size:11px;color:var(--txt3);
 .patcard .dsc{font-size:12px;color:var(--txt2);line-height:1.6}
 .gsecTitle{font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-family:var(--mono);margin:16px 0 10px}
 .gsecTitle.bull{color:var(--long)} .gsecTitle.bear{color:var(--short)}
+
+/* ---------- MOBİL (tam uyum) ---------- */
+@media(max-width:680px){
+  body{padding:10px 8px}
+  header h1{font-size:20px}
+  header .sub,header span{font-size:10px}
+  .controls{margin-left:0;width:100%;gap:6px}
+  .controls select,.controls input[type=number]{flex:1 1 45%;min-width:0;height:40px;font-size:13px}
+  .controls label{font-size:11px}
+  #scanBtn,#guideBtn{flex:1 1 100%;height:46px;font-size:15px}
+  .breadth{grid-template-columns:repeat(2,1fr);gap:8px}
+  .bcard{padding:9px 10px}
+  .bcard .k{font-size:9px}
+  .bcard .v{font-size:16px}
+  .filterbar{flex-wrap:nowrap;overflow-x:auto;padding-bottom:6px;-webkit-overflow-scrolling:touch}
+  .filterbar .chip{flex:0 0 auto;padding:9px 14px;font-size:12px}
+  #search{flex:0 0 130px;min-width:130px;height:38px}
+  .tablewrap{max-height:none;border-radius:10px}
+  #tbl{min-width:900px;font-size:11px}
+  #tbl th,#tbl td{padding:8px 8px}
+  .featured{grid-template-columns:1fr;gap:10px}
+  .planrow{flex-direction:column;align-items:stretch}
+  .planrow label{width:100%}
+  .planrow input{width:100%;height:40px}
+  .planbtn{width:100%;height:44px;font-size:14px}
+  .plantable{grid-template-columns:repeat(2,1fr)}
+  #journalPanel table{min-width:700px;font-size:11px}
+  #guideModal{width:96vw;height:90vh;left:2vw;top:4vh;transform:none}
+  #regimeBanner,#errBanner>div{font-size:12px}
+  footer{font-size:10px}
+}
+@media(max-width:400px){
+  .breadth{grid-template-columns:repeat(2,1fr)}
+  .plantable{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
@@ -191,7 +229,7 @@ footer{margin-top:18px;font-family:var(--mono);font-size:11px;color:var(--txt3);
 <header>
   <div class="logo">
     <h1>EzercomAI · <span class="dip">Dip</span> & <span class="tepe">Tepe</span> Radar</h1>
-    <span>Binance USDT-M Perpetual · 1W + 1D formasyon & momentum taraması · <b style="color:var(--blue)">v2.8</b></span>
+    <span>Binance USDT-M Perpetual · 1W + 1D formasyon & momentum taraması · <b style="color:var(--blue)">v2.9</b></span>
   </div>
   <div class="controls">
     <label class="ctl">Piyasa
@@ -284,7 +322,8 @@ footer{margin-top:18px;font-family:var(--mono);font-size:11px;color:var(--txt3);
   <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)">
     <b style="font-size:13px;color:var(--blue)">📓 SİNYAL GÜNLÜĞÜ — canlı forward-test</b>
     <span id="jSum" style="font-family:var(--mono);font-size:11px;color:var(--txt2)"></span>
-    <button onclick="clearJournalClosed()" style="margin-left:auto;background:var(--panel2);border:1px solid var(--border2);color:var(--txt2);font-size:11px;padding:5px 10px">🗑 Kapananları temizle</button>
+    <button class="chip" onclick="exportCsv('journal')" style="margin-left:auto;font-size:11px;padding:5px 10px">⬇ CSV</button>
+    <button onclick="clearJournalClosed()" style="background:var(--panel2);border:1px solid var(--border2);color:var(--txt2);font-size:11px;padding:5px 10px">🗑 Kapananları temizle</button>
   </div>
   <div style="overflow:auto"><table style="min-width:800px"><thead><tr>
     <th>Sembol</th><th>Yön</th><th>Tarih</th><th>Skor</th><th>Giriş</th><th>SL</th><th>TP</th><th>Durum</th><th>Sonuç</th>
@@ -304,11 +343,14 @@ footer{margin-top:18px;font-family:var(--mono);font-size:11px;color:var(--txt3);
 
 <div class="filterbar" id="filterbar" style="display:none">
   <button class="chip c-all on" data-cat="all">Tümü</button>
+  <button class="chip c-dip" data-cat="ready">🎯 Hazır</button>
   <button class="chip c-dip" data-cat="dip">Dip Adayları</button>
   <button class="chip c-tepe" data-cat="tepe">Tepe Adayları</button>
   <button class="chip c-watch" data-cat="watch">⭐ İzleme</button>
   <input type="text" id="search" placeholder="Sembol ara… (örn. SOL)">
   <span class="count" id="rowCount"></span>
+  <span class="count" id="lastScan"></span>
+  <button class="chip" onclick="exportCsv('table')">⬇ CSV</button>
 </div>
 
 <div class="tablewrap">
@@ -467,7 +509,7 @@ const Adapters = {
         .filter(s=>s.price>0);
     },
     async klines(s, interval, limit){
-      const iv = interval==="1d"?"D":"W";
+      const iv = interval==="1d"?"D":interval==="4h"?"240":"W";
       const res = await jget(`${BYB}/v5/market/kline?category=linear&symbol=${s.symbol}&interval=${iv}&limit=${limit}`);
       return res.result.list.map(k=>({t:+k[0],o:+k[1],h:+k[2],l:+k[3],c:+k[4],v:+k[5]})).reverse();
     }
@@ -867,8 +909,9 @@ function backtestSymbol(d,w,opts){
     lastSig=i;
     const lng=cross>0, atr=atrAt(i);
     const entry=lng?D[i].h:D[i].l;
-    const sl=lng?Math.min(D[i-2].l,D[i-1].l,D[i].l)-0.3*atr
-                :Math.max(D[i-2].h,D[i-1].h,D[i].h)+0.3*atr;
+    let sl=lng?Math.min(D[i-2].l,D[i-1].l,D[i].l)-0.3*atr
+             :Math.max(D[i-2].h,D[i-1].h,D[i].h)+0.3*atr;
+    sl=lng?Math.max(sl,entry-2*atr):Math.min(sl,entry+2*atr); // 2×ATR tavanı: dev fitiller R'yi şişirmesin
     const R=Math.abs(entry-sl);
     if(R<=0) continue;
     res.n++;
@@ -912,7 +955,8 @@ function updateJournal(rows){
     if(D.length<5||!r.atr) continue;
     const last=D[D.length-1];
     const entry=dir>0?last.h:last.l;
-    const sl=dir>0?Math.min(r.sigLow,entry)-0.3*r.atr:Math.max(r.sigHigh,entry)+0.3*r.atr;
+    let sl=dir>0?Math.min(r.sigLow,entry)-0.3*r.atr:Math.max(r.sigHigh,entry)+0.3*r.atr;
+    sl=dir>0?Math.max(sl,entry-2*r.atr):Math.min(sl,entry+2*r.atr); // 2×ATR tavanı
     const R=Math.abs(entry-sl); if(R<=0) continue;
     J.push({ id:r.symbol+"-"+dir+"-"+last.t, sym:r.symbol, dir, t:last.t, score:r.score,
       entry, sl, tp:dir>0?entry+1.5*R:entry-1.5*R, status:"bekliyor", r:null, closedT:null });
@@ -1054,6 +1098,7 @@ async function scan(){
       :(yahooLike?"<br>Yahoo istekleri proxy üzerinden gider; ağınız proxy servislerini engelliyor olabilir. Farklı ağ dene veya kapsamı küçültüp tekrar dene.":"<br>Ağ bağlantısını ve filtreleri kontrol et.")));
   }
   STATE.rows=rows;
+  STATE.lastScanAt=Date.now();
   notifyNewSignals(rows);
   updateJournal(rows);
   setProg(100, STATE.abort?`Durduruldu — ${rows.length} sembol analiz edildi.`:`Tamamlandı — ${rows.length} sembol analiz edildi. ${new Date().toLocaleTimeString("tr-TR")}`);
@@ -1189,6 +1234,7 @@ function render(){
 }
 function renderTable(){
   let rows=[...STATE.rows];
+  if(STATE.cat==="ready") rows=rows.filter(r=>r.cat==="dipReady"||r.cat==="topReady");
   if(STATE.cat==="dip") rows=rows.filter(r=>r.score>=20);
   if(STATE.cat==="tepe") rows=rows.filter(r=>r.score<=-20);
   if(STATE.cat==="watch") rows=rows.filter(r=>STATE.watch.has(r.symbol));
@@ -1202,6 +1248,7 @@ function renderTable(){
     return dir*(((x==null)-(y==null))||(x-y));
   });
   $("rowCount").textContent=rows.length+" sembol";
+  if(STATE.lastScanAt) $("lastScan").textContent="son tarama "+new Date(STATE.lastScanAt).toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"});
   const html=rows.map(r=>{
     const ci=catInfo(r.cat);
     const ctr=(STATE.regime==="LONG"&&r.score<=-20)||(STATE.regime==="SHORT"&&r.score>=20);
@@ -1254,7 +1301,9 @@ window.calcPlan=function(sym){
   STATE.plan={bal,risk};
   const dirLong=r.score>=0;
   const buf=0.3*r.atr;
-  const sl = dirLong ? Math.min(r.sigLow,entry)-buf : Math.max(r.sigHigh,entry)+buf;
+  const rawSl = dirLong ? Math.min(r.sigLow,entry)-buf : Math.max(r.sigHigh,entry)+buf;
+  const sl = dirLong ? Math.max(rawSl,entry-2*r.atr) : Math.min(rawSl,entry+2*r.atr);
+  const slCapped = sl!==rawSl;
   const R = Math.abs(entry-sl);
   if(R<=0||entry<=0){ document.getElementById("planOut").innerHTML=`<div class="plannote">Geçerli giriş fiyatı gir.</div>`; return; }
   const slPct=R/entry*100;
@@ -1265,7 +1314,8 @@ window.calcPlan=function(sym){
   const maxLev=Math.max(1,Math.min(20,Math.floor(100/(3*slPct))));
   const marginAtLev=notional/maxLev;
   const dc=dirLong?"long":"short";
-  document.getElementById("planOut").innerHTML=`
+  const capNote=slCapped?`<div class="plannote">ℹ SL, dev fitil nedeniyle 2×ATR tavanıyla sınırlandı (aşırı geniş R önlendi).</div>`:"";
+  document.getElementById("planOut").innerHTML=capNote+`
     <div class="plantable">
       <div class="pc"><div class="pk">Yön (skora göre)</div><div class="pv ${dc}">${dirLong?"LONG ▲":"SHORT ▼"}</div></div>
       <div class="pc"><div class="pk">Stop Loss</div><div class="pv ${dirLong?"short":"long"}">${fmtP(sl)}</div><div class="pk" style="margin-top:2px">mesafe %${fmt(slPct,2)}</div></div>
@@ -1315,7 +1365,13 @@ window.toggleDetail=function(sym,tr){
     </div>
     <div id="planOut"></div>
   </div>
-  ${STATE.market!=="yahoo"&&STATE.source==="binance"?`
+  ${STATE.market==="crypto"?`
+  <div class="planbox">
+    <h4 style="font-family:var(--disp);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--txt3);margin-bottom:10px">⏱ 4h Zamanlama Teyidi — "ne zaman" sorusunun cevabı</h4>
+    <div class="planrow"><button class="planbtn" onclick="timing4h('${r.symbol}')">4h Kontrol Et</button></div>
+    <div id="t4Out"><div class="plannote">Günlük sinyal "NE alınacak" der, bu kutu "NE ZAMAN" — 4h EMA20 geri alımı + RSI toparlanması + kısa vadeli kırılım üçlüsünü kontrol eder. Skora karışmaz, giriş zamanlaması içindir.</div></div>
+  </div>`:""}
+  ${STATE.market!=="yahoo"&&STATE.market!=="forex"&&STATE.source==="binance"?`
   <div class="planbox">
     <h4 style="font-family:var(--disp);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--txt3);margin-bottom:10px">🔬 Derin Analiz — OI · Top Trader L/S · Taker Baskısı</h4>
     <div class="planrow"><button class="planbtn" onclick="deepDive('${r.symbol}')">Veriyi Çek</button></div>
@@ -1466,6 +1522,63 @@ $("guideBtn").addEventListener("click",()=>openGuide("usage"));
 $("guideClose").addEventListener("click",closeGuide);
 $("guideOverlay").addEventListener("click",closeGuide);
 document.querySelectorAll(".gtab").forEach(t=>t.addEventListener("click",()=>openGuide(t.dataset.g)));
+
+/* ---------------- ⬇ CSV dışa aktar ---------------- */
+window.exportCsv=function(kind){
+  let head,lines,name;
+  if(kind==="journal"){
+    const J=loadJournal();
+    head="sembol,yon,tarih,skor,giris,sl,tp,durum,sonucR";
+    lines=J.map(e=>[e.sym,e.dir>0?"LONG":"SHORT",new Date(e.t).toISOString().slice(0,10),e.score,e.entry,e.sl,e.tp,e.status,e.r==null?"":e.r.toFixed(2)].join(","));
+    name="ezercom-sinyal-gunlugu.csv";
+  }else{
+    head="sembol,fiyat,chg24,skor,durum,formasyon1W,formasyon1D,rsi1D,rsi1W,hacimX,funding,konum90";
+    lines=STATE.rows.map(r=>[r.symbol,r.price,r.chg?.toFixed(2)??"",r.score,r.cat,(r.wPat?.name||""),(r.dPat?.name||""),r.rsiD?.toFixed(1)??"",r.rsiW?.toFixed(1)??"",r.volX?.toFixed(2)??"",r.funding==null?"":(r.funding*100).toFixed(4),(r.rangePos*100).toFixed(0)].join(","));
+    name="ezercom-tarama.csv";
+  }
+  const blob=new Blob(["\ufeff"+head+"\n"+lines.join("\n")],{type:"text/csv;charset=utf-8"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download=name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+};
+
+/* ---------------- ⏱ 4h Zamanlama Teyidi ---------------- */
+window.timing4h=async function(sym){
+  const out=document.getElementById("t4Out");
+  if(!out) return;
+  out.innerHTML='<div class="plannote">4h veriler çekiliyor…</div>';
+  try{
+    const r=STATE.rows.find(x=>x.symbol===sym);
+    const ad=Adapters[STATE.source]||Adapters.binance;
+    const kl=await ad.klines(r,"4h",60);
+    const K=kl.filter(k=>candleClosed(k,4*3600*1000));
+    if(K.length<25) throw new Error("yeterli 4h geçmişi yok");
+    const lng=(r?.score||0)>=0;
+    const closes=K.map(k=>k.c);
+    let ema=closes[0]; const a2=2/21;
+    for(let i=1;i<closes.length;i++) ema=closes[i]*a2+ema*(1-a2);
+    const rs=rsiSeries(closes);
+    const rNow=rs[rs.length-1], rPrev=rs[rs.length-2];
+    const last=K[K.length-1];
+    const hh6=Math.max(...K.slice(-7,-1).map(k=>k.h));
+    const ll6=Math.min(...K.slice(-7,-1).map(k=>k.l));
+    const c1=lng? last.c>ema : last.c<ema;
+    const c2=rNow!=null&&rPrev!=null&&(lng? (rNow>35&&rNow>rPrev) : (rNow<65&&rNow<rPrev));
+    const c3=lng? last.h>hh6 : last.l<ll6;
+    const n=(c1?1:0)+(c2?1:0)+(c3?1:0);
+    const row=(ok,txt)=>`<div style="display:flex;gap:8px;align-items:center;padding:4px 0;font-size:12px"><span style="color:${ok?"var(--long)":"var(--short)"}">${ok?"✓":"✗"}</span><span style="color:var(--txt2)">${txt}</span></div>`;
+    const verdict=n===3?`<b style="color:var(--long)">🟢 Zamanlama olgun</b> — 4h momentum kırılımı teyit ediyor.`
+      :n===2?`<b style="color:var(--warn)">🟡 Yaklaşıyor</b> — bir teyit eksik, bir-iki 4h mumu daha izle.`
+      :`<b style="color:var(--short)">🔴 Erken</b> — 4h momentum henüz dönmedi; günlük kırılımı beklemeden girme.`;
+    out.innerHTML=
+      row(c1, lng?`Fiyat 4h EMA20 üzerinde (${fmtP(ema)})`:`Fiyat 4h EMA20 altında (${fmtP(ema)})`)+
+      row(c2, `4h RSI ${rNow?rNow.toFixed(1):"–"} ${lng?"toparlanıyor (>35 ve yükseliyor)":"zayıflıyor (<65 ve düşüyor)"}`)+
+      row(c3, lng?`Son 4h mum, önceki 6 mumun tepesini kırdı`:`Son 4h mum, önceki 6 mumun dibini kırdı`)+
+      `<div class="plannote" style="margin-top:8px">${verdict}</div>`;
+  }catch(e){
+    out.innerHTML=`<div class="plannote">4h verisi alınamadı: ${e.message}</div>`;
+  }
+};
 
 /* ---------------- 🔬 Derin Analiz (Binance futures data) ---------------- */
 window.deepDive=async function(sym){
