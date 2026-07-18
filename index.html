@@ -229,7 +229,7 @@ footer{margin-top:18px;font-family:var(--mono);font-size:11px;color:var(--txt3);
 <header>
   <div class="logo">
     <h1>EzercomAI · <span class="dip">Dip</span> & <span class="tepe">Tepe</span> Radar</h1>
-    <span>Binance USDT-M Perpetual · 1W + 1D formasyon & momentum taraması · <b style="color:var(--blue)">v2.9</b></span>
+    <span>Binance USDT-M Perpetual · 1W + 1D formasyon & momentum taraması · <b style="color:var(--blue)">v3.0</b></span>
   </div>
   <div class="controls">
     <label class="ctl">Piyasa
@@ -270,6 +270,10 @@ footer{margin-top:18px;font-family:var(--mono);font-size:11px;color:var(--txt3);
     <label class="ctl" style="flex-direction:row;align-items:center;gap:6px;padding-top:14px">
       <input type="checkbox" id="btChk" checked style="accent-color:var(--blue);width:15px;height:15px">
       📜 Backtest
+    </label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt2);cursor:pointer">
+      <input type="checkbox" id="hunterChk" style="accent-color:#F0596B;width:15px;height:15px">
+      <span>🩸 Short Avcısı</span>
     </label>
     <button id="scanBtn">▶ Taramayı Başlat</button>
     <button id="stopBtn">■ Durdur</button>
@@ -328,6 +332,18 @@ footer{margin-top:18px;font-family:var(--mono);font-size:11px;color:var(--txt3);
   <div style="overflow:auto"><table style="min-width:800px"><thead><tr>
     <th>Sembol</th><th>Yön</th><th>Tarih</th><th>Skor</th><th>Giriş</th><th>SL</th><th>TP</th><th>Durum</th><th>Sonuç</th>
   </tr></thead><tbody id="jBody"></tbody></table></div>
+</div>
+
+<div id="hunterPanel" style="display:none;background:linear-gradient(180deg,rgba(240,89,107,.06),transparent 60%),var(--panel);border:1px solid rgba(240,89,107,.35);border-radius:12px;margin-bottom:16px;overflow:hidden">
+  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)">
+    <b style="font-size:13px;color:#F0596B">🩸 SHORT AVCISI — pompa tükenmesi radarı</b>
+    <span id="huntSum" style="font-family:var(--mono);font-size:11px;color:var(--txt2)"></span>
+    <span id="huntBt" style="margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--txt2)"></span>
+  </div>
+  <div id="huntBody" style="padding:6px 0"></div>
+  <div style="padding:8px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--txt3)">
+    Av mantığı: şişmiş fiyat (EMA20 mesafesi) + kalabalık long (pozitif funding) + tükenme kanıtı (RSI/uyumsuzluk/tepe formasyonu). Giriş her zaman <b>tetik seviyesinin AŞAĞI kırılımıyla</b> — pompalanan coin kırılım vermeden ASLA short açılmaz. Funding negatif piyasada listenin boş/zayıf kalması hata değil, avcının sabrıdır.
+  </div>
 </div>
 
 <div class="featured" id="featured" style="display:none">
@@ -408,7 +424,7 @@ const store={
   get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
   set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 };
-const SETTING_IDS=["marketSel","srcSel","scopeSel","minVol","closedOnly","autoSel","btChk","cal-th","cal-tp","cal-mc"];
+const SETTING_IDS=["marketSel","srcSel","scopeSel","minVol","closedOnly","autoSel","btChk","hunterChk","cal-th","cal-tp","cal-mc"];
 function saveSettings(){
   const o={};
   for(const id of SETTING_IDS){ const el=$(id); if(!el) continue; o[id]=el.type==="checkbox"?el.checked:el.value; }
@@ -1001,7 +1017,7 @@ function renderJournal(){
   const rows=[...J].sort((a,b)=>b.t-a.t).map(e=>{
     const d=new Date(e.t).toLocaleDateString("tr-TR",{day:"2-digit",month:"2-digit"});
     return `<tr>
-      <td class="sym-td">${e.sym}</td>
+      <td class="sym-td">${e.hunt?"🩸 ":""}${e.sym}</td>
       <td class="${e.dir>0?"pos":"neg"}">${e.dir>0?"LONG":"SHORT"}</td>
       <td>${d}</td><td>${e.score>0?"+":""}${e.score}</td>
       <td>${fmtP(e.entry)}</td><td>${fmtP(e.sl)}</td><td>${fmtP(e.tp)}</td>
@@ -1014,6 +1030,7 @@ function renderJournal(){
 window.clearJournalClosed=function(){
   saveJournal(loadJournal().filter(e=>e.status==="bekliyor"||e.status==="açık"));
   renderJournal();
+  renderHunter();
 };
 
 /* ---------------- scan orchestration ---------------- */
@@ -1101,6 +1118,10 @@ async function scan(){
   STATE.lastScanAt=Date.now();
   notifyNewSignals(rows);
   updateJournal(rows);
+  if($("hunterChk")&&$("hunterChk").checked){
+    const hl=rows.map(r=>({r,h:huntScoreRow(r)})).filter(x=>x.h&&x.h.score>=60);
+    addHunterJournal(hl);
+  }
   setProg(100, STATE.abort?`Durduruldu — ${rows.length} sembol analiz edildi.`:`Tamamlandı — ${rows.length} sembol analiz edildi. ${new Date().toLocaleTimeString("tr-TR")}`);
   render();
   STATE.running=false;
@@ -1212,6 +1233,7 @@ function render(){
     store.set("ez_regime", STATE.regime);
   }
   renderJournal();
+  renderHunter();
 
   // backtest özeti
   renderBacktest();
@@ -1523,6 +1545,135 @@ $("guideClose").addEventListener("click",closeGuide);
 $("guideOverlay").addEventListener("click",closeGuide);
 document.querySelectorAll(".gtab").forEach(t=>t.addEventListener("click",()=>openGuide(t.dataset.g)));
 
+
+/* ---------------- 🩸 SHORT AVCISI — pompa tükenmesi motoru ----------------
+   Klasik tepe sinyalinden farklı fizik: ortalamaya dönüş DEĞİL, aşırılık avı.
+   Bileşenler (maks ~118 → 100'e normalize):
+   şişme(EMA20 mesafesi) 20 · 7G pompa 15 · RSI1D 15 · RSI1W 10 · pozitif funding 15
+   · 1W tepe form 12 · 1D tepe form 8 · ayı uyumsuzluğu 10 · üst fitil 5 · 90G tepe 8 */
+function huntCore(D,W,funding){
+  if(D.length<30||W.length<5) return null;
+  const C=D.map(k=>k.c), last=D[D.length-1];
+  let ema=C[0]; const a2=2/21;
+  for(let i=1;i<C.length;i++) ema=C[i]*a2+ema*(1-a2);
+  const ext=ema>0?(last.c-ema)/ema:0;
+  const p7=D.length>8?D[D.length-8].c:C[0];
+  const ret7=p7>0?(last.c-p7)/p7:0;
+  const rsiD=rsi(C), rsiW=rsi(W.map(k=>k.c));
+  const wp=detectPatterns(W)[0]||null, dp=detectPatterns(D)[0]||null;
+  const look=D.slice(-90);
+  const lo=Math.min(...look.map(k=>k.l)), hi=Math.max(...look.map(k=>k.h));
+  const rangePos=hi>lo?(last.c-lo)/(hi-lo):0.5;
+  const div=detectDivergence(D);
+  const rA=Math.max(last.h-last.l,1e-12);
+  const upRej=(last.h-Math.max(last.o,last.c))/rA;
+  const P=[]; let t=0;
+  const add=(n,v)=>{ v=Math.round(v); if(v>0){P.push([n,v]); t+=v;} };
+  add("Şişme: EMA20 +"+(ext*100).toFixed(0)+"%",        ext>=0.10?Math.min(20,(ext-0.10)*133):0);
+  add("Pompa: 7G +"+(ret7*100).toFixed(0)+"%",          ret7>=0.25?Math.min(15,(ret7-0.25)*60):0);
+  add("RSI 1D "+(rsiD!=null?rsiD.toFixed(0):"–"),       rsiD!=null&&rsiD>=68?Math.min(15,(rsiD-68)*1.5):0);
+  add("RSI 1W "+(rsiW!=null?rsiW.toFixed(0):"–"),       rsiW!=null&&rsiW>=62?Math.min(10,(rsiW-62)*0.8):0);
+  add("Funding +"+(funding!=null?(funding*100).toFixed(3):"–")+"% long kalabalık", funding!=null&&funding>=0.0003?Math.min(15,funding/0.001*10+5):0);
+  add("1W tepe: "+(wp&&wp.dir<0?wp.name:"—"),           wp&&wp.dir<0?12*wp.w:0);
+  add("1D tepe: "+(dp&&dp.dir<0?dp.name:"—"),           dp&&dp.dir<0?8*dp.w:0);
+  add("Ayı uyumsuzluğu",                                 div<0?(div<=-10?10:6):0);
+  add("Üst fitil reddi",                                 upRej>0.55?5:0);
+  add("90G tepe bölgesi %"+(rangePos*100).toFixed(0),   rangePos>=0.85?8*(rangePos-0.85)/0.15:0);
+  const score=Math.round(Math.min(100,t*100/118));
+  // ATR14
+  let atr=0;{const tr=[];for(let i=Math.max(1,D.length-14);i<D.length;i++){const pc=D[i-1].c;tr.push(Math.max(D[i].h-D[i].l,Math.abs(D[i].h-pc),Math.abs(D[i].l-pc)));}atr=tr.reduce((x,y)=>x+y,0)/Math.max(1,tr.length);}
+  const trig=last.l;
+  let sl=Math.max(...D.slice(-3).map(k=>k.h))+0.3*atr;
+  sl=Math.min(sl,trig+2*atr);
+  const R=Math.abs(sl-trig);
+  return {score, parts:P, trig, sl, tp:trig-1.5*R, atr};
+}
+function huntScoreRow(r){
+  const D=(r._d||[]).filter(k=>candleClosed(k,DAY_MS));
+  const W=(r._w||[]).filter(k=>candleClosed(k,WEEK_MS));
+  return huntCore(D,W,r.funding);
+}
+/* Avcı backtest'i — funding tarihsel bulunmadığından o bileşen 0 alınır (dürüst kısıt).
+   Giriş: tetik aşağı kırılımı · 5 mumda tetiklenmezse iptal · aynı barda SL+TP=SL · 15 mum zaman aşımı */
+function btHunt(d,w,opts){
+  const O=Object.assign({th:60,tpR:1.5,cool:5},opts||{});
+  const D=d.filter(k=>candleClosed(k,DAY_MS));
+  const W=w.filter(k=>candleClosed(k,WEEK_MS));
+  const res={n:0,trig:0,wins:0,losses:0,timeouts:0,sumR:0,concl:0};
+  if(D.length<45||W.length<6) return res;
+  let wPtr=0, prev=0, lastSig=-99;
+  for(let i=35;i<D.length-1;i++){
+    while(wPtr<W.length && W[wPtr].t+WEEK_MS<=D[i].t+DAY_MS) wPtr++;
+    const h=huntCore(D.slice(0,i+1), W.slice(0,wPtr), null);
+    const sc=h?h.score:0;
+    const cross=sc>=O.th&&prev<O.th;
+    prev=sc;
+    if(!cross||i-lastSig<O.cool) continue;
+    lastSig=i;
+    const entry=h.trig, sl=h.sl, R=Math.abs(sl-entry);
+    if(R<=0) continue;
+    res.n++;
+    const tp=entry-O.tpR*R;
+    let trig=false;
+    for(let j=i+1;j<=Math.min(i+15,D.length-1);j++){
+      const b=D[j];
+      if(!trig){ if(j>i+5) break; if(b.l<=entry) trig=true; else continue; if(!trig) continue; res.trig++; }
+      if(b.h>=sl){ res.losses++; res.sumR-=1; res.concl++; break; }
+      if(b.l<=tp){ res.wins++; res.sumR+=O.tpR; res.concl++; break; }
+      if(j>=i+15){ res.timeouts++; res.concl++; res.sumR+=Math.max(-1,(entry-b.c)/R); break; }
+    }
+  }
+  return res;
+}
+function addHunterJournal(list){
+  const J=loadJournal(); let added=0;
+  for(const x of list){
+    if(x.h.score<60) continue;
+    if(J.some(e=>e.sym===x.r.symbol&&e.dir===-1&&(e.status==="bekliyor"||e.status==="açık"))) continue;
+    const D=(x.r._d||[]).filter(k=>candleClosed(k,DAY_MS));
+    if(!D.length) continue;
+    const last=D[D.length-1];
+    J.push({ id:"AV-"+x.r.symbol+"-"+last.t, sym:x.r.symbol, dir:-1, t:last.t, score:-x.h.score,
+      entry:x.h.trig, sl:x.h.sl, tp:x.h.tp, status:"bekliyor", r:null, closedT:null, hunt:1 });
+    added++;
+  }
+  if(added) saveJournal(J);
+  return added;
+}
+function renderHunter(){
+  const panel=$("hunterPanel"); if(!panel) return;
+  const on=$("hunterChk")&&$("hunterChk").checked;
+  if(!on||!STATE.rows.length){ panel.style.display="none"; return; }
+  const list=STATE.rows.map(r=>({r,h:huntScoreRow(r)})).filter(x=>x.h&&x.h.score>=25)
+    .sort((a,b)=>b.h.score-a.h.score).slice(0,10);
+  panel.style.display="block";
+  const ready=list.filter(x=>x.h.score>=60).length;
+  $("huntSum").textContent=`${list.length} aday · ${ready} AV HAZIR (≥60)`;
+  if(!list.length){ $("huntBody").innerHTML=`<div style="padding:16px;font-size:12px;color:var(--txt3)">Av yok — piyasada şişmiş + kalabalık long'lu hedef bulunamadı. Bu, avcının beklediği sessizliktir; funding pozitife dönüp coinler paraboliğe geçince liste dolar.</div>`; $("huntBt").textContent=""; return; }
+  // ilk 12 aday için avcı backtest karnesi (toplam)
+  let agg={n:0,trig:0,wins:0,losses:0,sumR:0,concl:0};
+  for(const x of list){ if(!x.r._d||!x.r._w) continue;
+    const b=btHunt(x.r._d,x.r._w,{th:60,tpR:1.5});
+    agg.n+=b.n; agg.trig+=b.trig; agg.wins+=b.wins; agg.losses+=b.losses; agg.sumR+=b.sumR; agg.concl+=b.concl; }
+  const dec=agg.wins+agg.losses;
+  $("huntBt").textContent=agg.n?`📜 av karnesi (bu adaylar, ~70G): ${agg.n} sinyal · ${dec?Math.round(agg.wins/dec*100)+"%":"–"} isabet · ${agg.concl?((agg.sumR/agg.concl>=0?"+":"")+(agg.sumR/agg.concl).toFixed(2)):"–"}R`:"";
+  $("huntBody").innerHTML=list.map(x=>{
+    const h=x.h, r=x.r;
+    const barW=Math.min(100,h.score);
+    const cls=h.score>=60?"#F0596B":h.score>=40?"var(--warn)":"var(--txt3)";
+    const tag=h.score>=60?"🎯 AV HAZIR":h.score>=40?"👁 PUSUDA":"iz";
+    const top3=h.parts.slice(0,3).map(p=>p[0]+" +"+p[1]).join(" · ");
+    return `<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);cursor:pointer" onclick="jumpTo('${r.symbol}')">
+      <b style="font-family:var(--mono);min-width:110px">${r.symbol}</b>
+      <span style="font-family:var(--mono);color:${cls};font-weight:700;min-width:56px">${h.score}<span style="opacity:.6;font-weight:400">/100</span></span>
+      <span style="font-size:10px;letter-spacing:.05em;color:${cls};min-width:78px">${tag}</span>
+      <div style="flex:0 0 90px;height:5px;background:var(--panel2);border-radius:4px;overflow:hidden"><div style="width:${barW}%;height:100%;background:${cls}"></div></div>
+      <span style="font-size:11px;color:var(--txt2);flex:1;min-width:200px">${top3||"—"}</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--txt3)">tetik ${fmtP(h.trig)} · SL ${fmtP(h.sl)} · TP ${fmtP(h.tp)}</span>
+    </div>`;
+  }).join("");
+}
+
 /* ---------------- ⬇ CSV dışa aktar ---------------- */
 window.exportCsv=function(kind){
   let head,lines,name;
@@ -1659,6 +1810,7 @@ SETTING_IDS.forEach(id=>{ const el=$(id); if(el) el.addEventListener("change",sa
 // kayıtlı piyasa yahoo ise kaynak seçiciyi pasifle
 if($("marketSel").value!=="crypto"){ $("srcSel").disabled=true; $("srcSel").style.opacity=0.4; }
 
+if(document.getElementById("hunterChk")) document.getElementById("hunterChk").addEventListener("change",renderHunter);
 $("marketSel").addEventListener("change",()=>{
   const m=$("marketSel").value;
   const y=m!=="crypto";
